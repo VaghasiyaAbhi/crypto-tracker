@@ -1,0 +1,230 @@
+# Local Development Docker Compose Configuration
+# Use this for testing changes locally before pushing to production
+# Usage: docker-compose -f docker-compose.local.yml up --build
+
+version: '3.8'
+
+services:
+  # Redis - Cache and Message Broker
+  redis:
+    image: redis:7-alpine
+    container_name: crypto-tracker-redis-local
+    ports:
+      - "6379:6379"
+    networks:
+      - crypto-network-local
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # PostgreSQL - Local Database (optional - can use external)
+  postgres:
+    image: postgres:15-alpine
+    container_name: crypto-tracker-postgres-local
+    environment:
+      POSTGRES_DB: ${DB_NAME:-crypto_tracker_local}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_local:/var/lib/postgresql/data
+    networks:
+      - crypto-network-local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Django Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crypto-tracker-backend-local
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             daphne -b 0.0.0.0 -p 8000 project_config.asgi:application"
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - SECRET_KEY=${SECRET_KEY:-local-dev-secret-key-change-in-production}
+      - FRONTEND_URL=http://localhost:3000
+      - BACKEND_URL=http://localhost:8000
+      - DOCKER_ENV=true
+    volumes:
+      - ./backend:/app
+      - static_volume_local:/app/staticfiles
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - crypto-network-local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Celery Worker - Background Tasks
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crypto-tracker-celery-worker-local
+    command: celery -A project_config worker --loglevel=info --concurrency=2
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - DOCKER_ENV=true
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - redis
+      - postgres
+      - backend
+    networks:
+      - crypto-network-local
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*worker' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Celery Beat - Task Scheduler
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crypto-tracker-celery-beat-local
+    command: celery -A project_config beat --loglevel=info
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - DOCKER_ENV=true
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - redis
+      - postgres
+      - backend
+    networks:
+      - crypto-network-local
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Data Worker - Crypto Data Fetching
+  data-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crypto-tracker-data-worker-local
+    command: celery -A project_config worker -Q data_queue --loglevel=info --concurrency=1
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - DOCKER_ENV=true
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - redis
+      - postgres
+      - backend
+    networks:
+      - crypto-network-local
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'data_queue' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Calc Worker - Metrics Calculation
+  calc-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: crypto-tracker-calc-worker-local
+    command: celery -A project_config worker -Q calc_queue --loglevel=info --concurrency=1
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - DOCKER_ENV=true
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - redis
+      - postgres
+      - backend
+    networks:
+      - crypto-network-local
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A project_config inspect ping -d celery@$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://localhost:8000
+        - NEXT_PUBLIC_WS_URL=ws://localhost:8000
+    container_name: crypto-tracker-frontend-local
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - crypto-network-local
+    command: npm run dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  crypto-network-local:
+    driver: bridge
+
+volumes:
+  postgres_data_local:
+  static_volume_local:
