@@ -86,6 +86,12 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A project_config inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
     # Celery Beat Scheduler - Optimized intervals for 20 concurrent users
   celery-beat:
@@ -110,6 +116,12 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep 'celery.*beat' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Binance Data Worker - Fetches real crypto data from Binance API - Optimized for WebSocket
   data-worker:
@@ -146,6 +158,12 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep 'start_websocket' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   # Single Calculation Worker for metrics processing - Optimized for 80s interval
   calc-worker:
@@ -170,6 +188,12 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A project_config inspect ping -d calc-worker@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # NOTE: Telegram Bot Integration
   # The bot runs automatically in the celery-beat service (see below)
