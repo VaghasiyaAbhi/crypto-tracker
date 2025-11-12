@@ -48,8 +48,8 @@ start_local() {
     print_info "Starting local development environment..."
     check_env_file
     
-    # Load environment variables
-    export $(grep -v '^#' .env.local | xargs)
+    # Note: Don't export .env.local here - Docker Compose will load it automatically
+    # Exporting multi-line values (like Firebase private key) causes shell errors
     
     docker-compose -f docker-compose.local.yml up -d
     
@@ -69,7 +69,7 @@ start_rebuild() {
     print_info "Starting local environment with rebuild..."
     check_env_file
     
-    export $(grep -v '^#' .env.local | xargs)
+    # Note: Don't export .env.local here - Docker Compose will load it automatically
     
     docker-compose -f docker-compose.local.yml up -d --build
     

@@ -1,6 +1,7 @@
 # Local Development Docker Compose Configuration
 # Use this for testing changes locally before pushing to production
 # Usage: docker-compose -f docker-compose.local.yml up --build
+# Loads environment variables from .env.local file
 
 version: '3.8'
 
@@ -49,9 +50,11 @@ services:
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
              daphne -b 0.0.0.0 -p 8000 project_config.asgi:application"
+    env_file:
+      - .env.local
     environment:
       - DEBUG=True
-      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - ALLOWED_HOSTS=localhost,127.0.0.1,backend
@@ -85,9 +88,11 @@ services:
       dockerfile: Dockerfile
     container_name: crypto-tracker-celery-worker-local
     command: celery -A project_config worker --loglevel=info --concurrency=2
+    env_file:
+      - .env.local
     environment:
       - DEBUG=True
-      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - DOCKER_ENV=true
@@ -113,9 +118,11 @@ services:
       dockerfile: Dockerfile
     container_name: crypto-tracker-celery-beat-local
     command: celery -A project_config beat --loglevel=info
+    env_file:
+      - .env.local
     environment:
       - DEBUG=True
-      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - DOCKER_ENV=true
@@ -141,9 +148,11 @@ services:
       dockerfile: Dockerfile
     container_name: crypto-tracker-data-worker-local
     command: celery -A project_config worker -Q data_queue --loglevel=info --concurrency=1
+    env_file:
+      - .env.local
     environment:
       - DEBUG=True
-      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - DOCKER_ENV=true
@@ -169,9 +178,11 @@ services:
       dockerfile: Dockerfile
     container_name: crypto-tracker-calc-worker-local
     command: celery -A project_config worker -Q calc_queue --loglevel=info --concurrency=1
+    env_file:
+      - .env.local
     environment:
       - DEBUG=True
-      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-crypto_tracker_local}}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - DOCKER_ENV=true
