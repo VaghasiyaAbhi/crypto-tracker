@@ -1767,19 +1767,69 @@ def fetch_binance_data_task(self):
                 for item in batch:
                     try:
                         symbol = item['symbol']
+                        current_price = float(item['lastPrice'])
                         
-                        # Efficient upsert operation
+                        # Get existing record to calculate return percentages
+                        existing = CryptoData.objects.filter(symbol=symbol).first()
+                        
+                        # Prepare defaults for upsert
+                        defaults = {
+                            'last_price': Decimal(item['lastPrice']),
+                            'price_change_percent_24h': Decimal(item['priceChangePercent']),
+                            'high_price_24h': Decimal(item['highPrice']),
+                            'low_price_24h': Decimal(item['lowPrice']),
+                            'quote_volume_24h': Decimal(item['quoteVolume']),
+                            'bid_price': Decimal(item['bidPrice']) if item['bidPrice'] else None,
+                            'ask_price': Decimal(item['askPrice']) if item['askPrice'] else None,
+                        }
+                        
+                        # ========== CALCULATE RETURN % IN REAL-TIME ==========
+                        # This prevents N/A by calculating immediately on price update
+                        if existing:
+                            # Calculate return % for all timeframes
+                            if existing.m1 and float(existing.m1) > 0:
+                                defaults['m1_r_pct'] = Decimal(str(round(((current_price - float(existing.m1)) / float(existing.m1)) * 100, 4)))
+                            else:
+                                defaults['m1_r_pct'] = Decimal('0.0000')
+                                
+                            if existing.m2 and float(existing.m2) > 0:
+                                defaults['m2_r_pct'] = Decimal(str(round(((current_price - float(existing.m2)) / float(existing.m2)) * 100, 4)))
+                            else:
+                                defaults['m2_r_pct'] = Decimal('0.0000')
+                                
+                            if existing.m3 and float(existing.m3) > 0:
+                                defaults['m3_r_pct'] = Decimal(str(round(((current_price - float(existing.m3)) / float(existing.m3)) * 100, 4)))
+                            else:
+                                defaults['m3_r_pct'] = Decimal('0.0000')
+                                
+                            if existing.m5 and float(existing.m5) > 0:
+                                defaults['m5_r_pct'] = Decimal(str(round(((current_price - float(existing.m5)) / float(existing.m5)) * 100, 4)))
+                            else:
+                                defaults['m5_r_pct'] = Decimal('0.0000')
+                                
+                            if existing.m10 and float(existing.m10) > 0:
+                                defaults['m10_r_pct'] = Decimal(str(round(((current_price - float(existing.m10)) / float(existing.m10)) * 100, 4)))
+                            else:
+                                defaults['m10_r_pct'] = Decimal('0.0000')
+                                
+                            if existing.m15 and float(existing.m15) > 0:
+                                defaults['m15_r_pct'] = Decimal(str(round(((current_price - float(existing.m15)) / float(existing.m15)) * 100, 4)))
+                            else:
+                                defaults['m15_r_pct'] = Decimal('0.0000')
+                                
+                            if existing.m60 and float(existing.m60) > 0:
+                                defaults['m60_r_pct'] = Decimal(str(round(((current_price - float(existing.m60)) / float(existing.m60)) * 100, 4)))
+                            else:
+                                defaults['m60_r_pct'] = Decimal('0.0000')
+                        else:
+                            # New coin - initialize all return % to 0
+                            for tf in ['m1', 'm2', 'm3', 'm5', 'm10', 'm15', 'm60']:
+                                defaults[f'{tf}_r_pct'] = Decimal('0.0000')
+                        
+                        # Efficient upsert operation with return % calculated
                         crypto_data, created = CryptoData.objects.update_or_create(
                             symbol=symbol,
-                            defaults={
-                                'last_price': Decimal(item['lastPrice']),
-                                'price_change_percent_24h': Decimal(item['priceChangePercent']),
-                                'high_price_24h': Decimal(item['highPrice']),
-                                'low_price_24h': Decimal(item['lowPrice']),
-                                'quote_volume_24h': Decimal(item['quoteVolume']),
-                                'bid_price': Decimal(item['bidPrice']) if item['bidPrice'] else None,
-                                'ask_price': Decimal(item['askPrice']) if item['askPrice'] else None,
-                            }
+                            defaults=defaults
                         )
                         
                         total_updated += 1
