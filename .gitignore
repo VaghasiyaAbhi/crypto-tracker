@@ -1,0 +1,103 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+# lib/ - COMMENTED OUT: We need frontend/src/lib/ directory
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Scrapy stuff:
+.scrapy
+
+# Env
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Mac files
+.DS_Store
+
+# Frontend
+src/node_modules
+.nextbackend/.env
+
+# Environment files
+backend/.env
+frontend/.env
+
+# Documentation files (keep only README.md)
+*_GUIDE.md
+*_SETUP.md
+*_COMMANDS.md
+*_STATUS.md
+*_FIX.md
+*_COMPLETE.md
+*_UPDATE.md
+DEPLOY*.md
+DOMAIN*.md
+SSL*.md
+QUICK*.txt
+QUICK*.md
+
+# Deployment scripts (keep only backend/start.sh and backend/wait-for-services.sh)
+deploy.sh
+test_*.sh
+deploy/
+scripts/*.sh
