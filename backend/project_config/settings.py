@@ -249,11 +249,11 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework_simplejwt.authentication.JWTAuthentication']
 }
 
-# --- JWT CONFIGURATION (2-minute inactivity timeout for traffic management) ---
+# --- JWT CONFIGURATION (15-minute session timeout) ---
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=2),  # Auto-logout after 2 minutes of inactivity
-    'REFRESH_TOKEN_LIFETIME': timedelta(minutes=5),  # Refresh token expires after 5 minutes
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),  # Session timeout after 15 minutes of inactivity
+    'REFRESH_TOKEN_LIFETIME': timedelta(minutes=30),  # Refresh token expires after 30 minutes
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': False,
     'UPDATE_LAST_LOGIN': True,

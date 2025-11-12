@@ -1,5 +1,5 @@
 // Authentication utility functions
-// Session persists for 30 minutes even after closing browser
+// Session persists for 15 minutes even after closing browser
 // Uses localStorage for persistence + activity timestamp tracking
 export interface User {
   access_token: string;
@@ -13,8 +13,8 @@ export interface User {
   subscription_plan?: string;
 }
 
-// Session timeout: 30 minutes in milliseconds
-const SESSION_TIMEOUT = 30 * 60 * 1000;
+// Session timeout: 15 minutes in milliseconds (matches backend JWT token lifetime)
+const SESSION_TIMEOUT = 15 * 60 * 1000;
 
 /**
  * Update last activity timestamp
@@ -24,7 +24,7 @@ export const updateLastActivity = (): void => {
 };
 
 /**
- * Check if session is still valid (within 30 minutes of last activity)
+ * Check if session is still valid (within 15 minutes of last activity)
  * @returns true if session is valid, false if expired
  */
 export const isSessionValid = (): boolean => {
@@ -43,7 +43,7 @@ export const isSessionValid = (): boolean => {
 };
 
 /**
- * Save user to localStorage (persists for 30 minutes even after closing browser)
+ * Save user to localStorage (persists for 15 minutes even after closing browser)
  * Also saves refresh token and updates activity timestamp
  */
 export const saveUser = (user: User): void => {
@@ -69,8 +69,8 @@ export const saveUser = (user: User): void => {
 
 /**
  * Get user from localStorage with validation
- * Checks if session is still valid (within 30 minutes)
- * Works even after closing browser - persists for 30 minutes
+ * Checks if session is still valid (within 15 minutes)
+ * Works even after closing browser - persists for 15 minutes
  * @returns User object or null if not authenticated or session expired
  */
 export const getUser = (): User | null => {
@@ -90,9 +90,9 @@ export const getUser = (): User | null => {
       return null;
     }
     
-    // Check if session is still valid (within 30 minutes of last activity)
+    // Check if session is still valid (within 15 minutes of last activity)
     if (!isSessionValid()) {
-      console.warn('Session expired due to inactivity (30 minutes)');
+      console.warn('Session expired due to inactivity (15 minutes)');
       // Clear expired session
       logout();
       return null;
