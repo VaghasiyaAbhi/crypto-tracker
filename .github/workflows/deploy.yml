@@ -28,32 +28,48 @@ jobs:
             
             # Pull latest changes from GitHub
             echo "📥 Pulling latest code from GitHub..."
+            git reset --hard origin/main
             git pull origin main
             
-            # Rebuild and restart all services (fresh deployment)
+            # Check if Docker images need rebuilding (only if Dockerfile changed)
             echo ""
-            echo "🔨 Rebuilding all Docker containers..."
-            docker-compose build --no-cache
+            echo "� Checking for Docker changes..."
+            if git diff HEAD@{1} HEAD --name-only | grep -E "Dockerfile|requirements.txt|package.json|package-lock.json"; then
+              echo "📦 Dependencies changed - rebuilding images..."
+              docker-compose build
+            else
+              echo "✅ No dependency changes - skipping rebuild"
+            fi
             
+            # Restart only affected services (backend, frontend, workers)
             echo ""
-            echo "🔄 Restarting all services..."
-            docker-compose down
-            docker-compose up -d
+            echo "🔄 Restarting application services..."
+            docker-compose restart backend1 data-worker calc-worker celery-worker celery-beat frontend
             
             # Wait for services to start
             echo ""
-            echo "⏳ Waiting for services to initialize (30 seconds)..."
-            sleep 30
+            echo "⏳ Waiting for services to restart (10 seconds)..."
+            sleep 10
             
-            # Run migrations if needed
+            # Run migrations if needed (only if migration files changed)
             echo ""
-            echo "📊 Running database migrations..."
-            docker-compose exec -T backend1 python manage.py migrate --noinput || echo "Migrations already applied"
+            echo "📊 Checking for database migrations..."
+            if git diff HEAD@{1} HEAD --name-only | grep -E "migrations/"; then
+              echo "Running migrations..."
+              docker-compose exec -T backend1 python manage.py migrate --noinput
+            else
+              echo "✅ No migration changes detected"
+            fi
             
-            # Collect static files
+            # Collect static files (only if static files changed)
             echo ""
-            echo "� Collecting static files..."
-            docker-compose exec -T backend1 python manage.py collectstatic --noinput || echo "Static files already collected"
+            echo "📁 Checking for static file changes..."
+            if git diff HEAD@{1} HEAD --name-only | grep -E "static/|frontend/"; then
+              echo "Collecting static files..."
+              docker-compose exec -T backend1 python manage.py collectstatic --noinput || echo "Static files already up to date"
+            else
+              echo "✅ No static file changes detected"
+            fi
             
             # Show running containers status
             echo ""
