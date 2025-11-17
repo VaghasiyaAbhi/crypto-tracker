@@ -61,7 +61,7 @@ const Header = () => {
   return (
     <header className="sticky top-0 z-50 flex items-center justify-between bg-white shadow-sm p-2 rounded-xl mb-4">
       <div className="flex items-center space-x-2">
-        <span className="text-lg font-bold">Crypto Tracker</span>
+  <span className="text-lg font-bold">Volume Tracker</span>
         <Button variant="ghost" asChild>
           <Link href="/dashboard">
             <TrendingUp className="h-4 w-4 mr-1" />

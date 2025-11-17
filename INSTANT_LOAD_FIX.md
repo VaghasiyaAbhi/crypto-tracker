@@ -217,9 +217,59 @@ This fix works in conjunction with:
 - **Commits**: 
   - `6fb5482` - Fix: Convert Decimal fields to float instead of string in API responses
   - `52bc65e` - Fix: Load dashboard data immediately after login without showing 'No data' message
+  - `1380cd7` - Fix: Handle API response object structure correctly (data property)
 - **Date**: November 17, 2025
 - **Branch**: main
 
+## Additional Fix: API Response Structure (November 17, 2025)
+
+### Issue: "Loaded undefined crypto coins"
+Console was showing `✅ Loaded undefined crypto coins instantly` and dashboard remained stuck on loading screen.
+
+### Root Cause
+The backend API `/api/binance-data/` returns a structured object:
+```json
+{
+  "data": [...],
+  "plan": "basic",
+  "is_premium": true,
+  "pagination": {...},
+  "sorting": {...}
+}
+```
+
+But frontend was treating entire response as array:
+```typescript
+const initialData = await initialDataResponse.json();
+console.log(`✅ Loaded ${initialData.length} crypto coins instantly`);
+// initialData.length = undefined (because it's an object, not array)
+```
+
+### Solution
+Updated `frontend/src/app/dashboard/page.tsx` (lines 459-482):
+```typescript
+// BEFORE
+const initialData = await initialDataResponse.json();
+
+// AFTER
+const responseData = await initialDataResponse.json();
+const initialData = Array.isArray(responseData) 
+  ? responseData 
+  : (responseData.data || []);
+
+if (initialData.length === 0) {
+  console.warn("⚠️ Warning: API returned 0 items");
+} else {
+  console.log(`✅ Loaded ${initialData.length} crypto coins instantly`);
+}
+```
+
+### Deployment
+- **Commit**: 1380cd7
+- **Container**: crypto-tracker_frontend_1 rebuilt successfully
+- **Status**: Running on port 3000, HTTP 200 OK
+- **Next.js**: 15.5.2 ready in 214ms
+
 ---
 
-**Status**: ✅ FIXED - Dashboard loads data instantly on login
+**Status**: ✅ FIXED - Dashboard loads data instantly on login with correct API response handling

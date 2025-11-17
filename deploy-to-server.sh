@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Deployment script for Hetzner server
-# This script will build and deploy the crypto tracker application
+# This script will build and deploy the volume tracker application
 
 echo "🚀 Starting deployment on Hetzner server..."
 

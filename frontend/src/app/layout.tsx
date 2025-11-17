@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Crypto Tracker",
+  title: "Volume Tracker",
   description: "Track your favorite cryptocurrencies",
 };
 

@@ -73,11 +73,11 @@ def send_activation_email_task(self, email: str, first_name: str, token: str):
         """Async task to send activation email with branded HTML template"""
         try:
                 brand = {
-                        'name': 'CryptoPulse',
+                        'name': 'Volume Tracker',
                         'color': '#6366f1',  # indigo
                 }
 
-                subject = 'Activate your CryptoPulse account'
+                subject = 'Activate your Volume Tracker account'
                 frontend_base = (getattr(settings, 'FRONTEND_URL', None) or os.environ.get('FRONTEND_URL') or 'http://localhost:3000').rstrip('/')
                 activation_url = f"{frontend_base}/activate/{token}"
 
@@ -154,7 +154,7 @@ def send_login_token_email_task(self, email: str, first_name: str, token: str):
         """Async task to send login token email with branded HTML template"""
         try:
                 brand = {
-                        'name': 'CryptoPulse',
+                        'name': 'Volume Tracker',
                         'color': '#10b981',  # emerald
                 }
 
@@ -497,10 +497,10 @@ def send_email_alert_task(self, user_id: int, alert_type: str, symbol: str,
                                 ⏰ Alert triggered on {current_time}
                             </p>
                             <p style="margin: 0 0 15px 0; color: #9ca3af; font-size: 11px;">
-                                This is an automated alert from your CryptoPulseBot account.
+                                This is an automated alert from your Volume Tracker Bot account.
                             </p>
                             <p style="margin: 0; color: #374151; font-size: 13px; font-weight: 600;">
-                                🚀 CryptoPulseBot - Real-time Crypto Alerts
+                                🚀 Volume Tracker Bot - Real-time Crypto Alerts
                             </p>
                             <p style="margin: 8px 0 0 0;">
                                 <a href="{(getattr(settings,'FRONTEND_URL',None) or os.environ.get('FRONTEND_URL') or 'http://localhost:3000').rstrip('/')}/alerts" style="color: {color}; text-decoration: none; font-size: 12px;">Manage Alerts</a>
@@ -541,7 +541,7 @@ Alert Time: {current_time}
 View your dashboard: {(getattr(settings,'FRONTEND_URL',None) or os.environ.get('FRONTEND_URL') or 'http://localhost:3000').rstrip('/')}/dashboard
 
 ─────────────────
-CryptoPulseBot - Real-time Crypto Alerts
+Volume Tracker Bot - Real-time Crypto Alerts
 Manage your alerts: {(getattr(settings,'FRONTEND_URL',None) or os.environ.get('FRONTEND_URL') or 'http://localhost:3000').rstrip('/')}/alerts
 """
         
@@ -1361,8 +1361,8 @@ def send_activation_email_task(self, email: str, first_name: str, token: str):
         Async task to send activation email (HTML themed)
         """
         try:
-                brand = {'name': 'CryptoPulse', 'color': '#6366f1'}
-                subject = 'Activate your CryptoPulse account'
+                brand = {'name': 'Volume Tracker', 'color': '#6366f1'}
+                subject = 'Activate your Volume Tracker account'
                 frontend_base = (getattr(settings,'FRONTEND_URL',None) or os.environ.get('FRONTEND_URL') or 'http://localhost:3000').rstrip('/')
                 activation_url = f"{frontend_base}/activate/{token}"
                 message = (
@@ -1401,7 +1401,7 @@ def send_login_token_email_task(self, email: str, first_name: str, token: str):
         Async task to send login token email (HTML themed)
         """
         try:
-                brand = {'name': 'CryptoPulse', 'color': '#10b981'}
+                brand = {'name': 'Volume Tracker', 'color': '#10b981'}
                 subject = 'Your secure login link'
                 frontend_base = (getattr(settings,'FRONTEND_URL',None) or os.environ.get('FRONTEND_URL') or 'http://localhost:3000').rstrip('/')
                 login_url = f"{frontend_base}/login/{token}"
@@ -2492,7 +2492,7 @@ Don't lose access to premium features:
 Need help? Reply to this email or contact our support team.
 
 Best regards,
-Crypto Tracker Team
+Volume Tracker Team
                 """
                 
                 try:
@@ -2609,7 +2609,7 @@ You no longer have access to:
 We'd love to have you back as a premium member!
 
 Best regards,
-Crypto Tracker Team
+Volume Tracker Team
             """
             
             try:
@@ -2637,7 +2637,7 @@ You can upgrade anytime to restore premium features:
 
 👉 <a href="{settings.FRONTEND_URL}/upgrade-plan">Upgrade Now</a>
 
-Thank you for using Crypto Tracker! 🙏
+Thank you for using Volume Tracker! 🙏
                 """
                 
                 try:

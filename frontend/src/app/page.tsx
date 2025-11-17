@@ -194,7 +194,7 @@ export default function App() {
           <div>
             <div className="flex items-center space-x-2 sm:space-x-3 mb-4 sm:mb-6">
               <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-indigo-600 dark:text-indigo-400" />
-              <span className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Crypto Tracker</span>
+              <span className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Volume Tracker</span>
             </div>
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight text-gray-900 dark:text-white mb-3 sm:mb-4">
               Track the market. <br className="hidden sm:block" />Trade with confidence.
@@ -220,7 +220,7 @@ export default function App() {
                 Access Your Account
               </CardTitle>
               <CardDescription className="text-sm sm:text-base text-gray-500 dark:text-gray-400">
-                Sign in or create a new account to continue.
+                Login or Register to continue.
               </CardDescription>
             </CardHeader>
             <CardContent className="px-2 sm:px-6">
