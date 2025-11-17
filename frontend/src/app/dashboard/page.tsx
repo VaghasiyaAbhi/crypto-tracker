@@ -467,13 +467,17 @@ export default function DashboardPage() {
           });
 
           if (initialDataResponse.ok) {
-            const initialData = await initialDataResponse.json();
+            const responseData = await initialDataResponse.json();
+            // API returns object with 'data' property containing the array
+            const initialData = Array.isArray(responseData) ? responseData : (responseData.data || []);
             console.log(`✅ Loaded ${initialData.length} crypto coins instantly`);
             
             if (isMountedRef.current && initialData.length > 0) {
               setCryptoData(initialData);
               setLastUpdateTime(new Date().toLocaleTimeString());
               setLoading(false); // Stop loading immediately after we have initial data
+            } else if (isMountedRef.current && initialData.length === 0) {
+              console.warn('⚠️ REST API returned 0 items, waiting for WebSocket...');
             }
           } else {
             console.warn('⚠️ Failed to fetch initial data, will rely on WebSocket');
