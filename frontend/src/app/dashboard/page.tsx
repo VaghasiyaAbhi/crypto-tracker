@@ -1067,7 +1067,6 @@ export default function DashboardPage() {
               ))}
             </div>
           </section>
-        </div>
 
         <section className="flex-grow min-h-0 h-0">
           <Card className="h-full p-0 border-gray-200 overflow-hidden rounded-lg flex flex-col">
@@ -1188,7 +1187,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </section>
-      </div>
+        </div>
       </main>
     </div>
   );
