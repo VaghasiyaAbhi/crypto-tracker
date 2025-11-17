@@ -1,6 +1,7 @@
 import json
 import asyncio
 import time
+from decimal import Decimal
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from rest_framework_simplejwt.tokens import AccessToken
@@ -11,6 +12,13 @@ from core.serializers import (
     CryptoDataBasicSerializer,
     CryptoDataFreeSerializer,
 )
+
+class DecimalEncoder(json.JSONEncoder):
+    """Custom JSON encoder to handle Decimal objects"""
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super(DecimalEncoder, self).default(obj)
 
 @database_sync_to_async
 def get_user(token_key):
@@ -62,7 +70,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             "plan": user_plan,
             "is_authenticated": is_auth,
             "reason": None if is_auth else "unauthorized"
-        }))
+        }, cls=DecimalEncoder))
         # Start heartbeat pings (every 20s) so we can see if connection silently dies.
         try:
             loop = asyncio.get_running_loop()
@@ -85,12 +93,12 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             # Wrap as delta for clients that understand types; legacy clients still accept arrays
             payload = event.get('data')
             if isinstance(payload, (list, dict)):
-                await self.send(text_data=json.dumps({"type": "delta", "data": payload}))
+                await self.send(text_data=json.dumps({"type": "delta", "data": payload}, cls=DecimalEncoder))
             else:
-                await self.send(text_data=json.dumps(payload))
+                await self.send(text_data=json.dumps(payload, cls=DecimalEncoder))
         except Exception:
             # Fallback to raw payload
-            await self.send(text_data=json.dumps(event['data']))
+            await self.send(text_data=json.dumps(event['data'], cls=DecimalEncoder))
 
     async def receive(self, text_data=None, bytes_data=None):
         """Handle incoming messages from clients (e.g., request full snapshot)."""
@@ -139,7 +147,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                     'total_chunks': total_pages,
                     'total_count': total_count,
                     'data': data_chunk,
-                }))
+                }, cls=DecimalEncoder))
 
     @database_sync_to_async
     def _get_snapshot_chunk(self, serializer_class, sort_field: str, offset: int, limit: int):
@@ -151,7 +159,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             while True:
                 await asyncio.sleep(10)  # ⚡ Faster: 20s → 10s for more responsive updates
                 try:
-                    await self.send(text_data=json.dumps({"type": "heartbeat", "ts": time.time()}))
+                    await self.send(text_data=json.dumps({"type": "heartbeat", "ts": time.time()}, cls=DecimalEncoder))
                 except Exception as e:
                     break
         except Exception as e:
