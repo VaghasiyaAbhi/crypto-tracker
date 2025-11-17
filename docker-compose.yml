@@ -24,9 +24,6 @@ services:
         limits:
           cpus: '0.5'
           memory: 256M
-        reservations:
-          cpus: '0.3'
-          memory: 128M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -52,9 +49,6 @@ services:
         limits:
           cpus: '0.6'
           memory: 640M
-        reservations:
-          cpus: '0.4'
-          memory: 320M
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "manage.py", "check"]
@@ -79,9 +73,6 @@ services:
         limits:
           cpus: '0.6'
           memory: 512M
-        reservations:
-          cpus: '0.4'
-          memory: 256M
     depends_on:
       redis:
         condition: service_healthy
@@ -109,9 +100,6 @@ services:
         limits:
           cpus: '0.2'
           memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 128M
     depends_on:
       redis:
         condition: service_healthy
@@ -151,9 +139,6 @@ services:
         limits:
           cpus: '0.5'
           memory: 448M
-        reservations:
-          cpus: '0.3'
-          memory: 224M
     depends_on:
       redis:
         condition: service_healthy
@@ -181,9 +166,6 @@ services:
         limits:
           cpus: '0.4'
           memory: 320M
-        reservations:
-          cpus: '0.2'
-          memory: 160M
     depends_on:
       redis:
         condition: service_healthy
@@ -217,9 +199,6 @@ services:
         limits:
           cpus: '0.2'
           memory: 128M
-        reservations:
-          cpus: '0.1'
-          memory: 64M
     depends_on:
       backend1:
         condition: service_healthy
@@ -254,15 +233,12 @@ services:
         limits:
           cpus: '0.5'
           memory: 512M
-        reservations:
-          cpus: '0.3'
-          memory: 320M
     depends_on:
       - nginx
       - backend1
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/ || exit 1"]
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})\""]
       interval: 30s
       timeout: 10s
       retries: 3
