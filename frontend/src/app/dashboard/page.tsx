@@ -490,6 +490,17 @@ export default function DashboardPage() {
         // Always connect WebSocket for both free and paid users
         connectWebSocket(user.access_token);
 
+        // Safety timeout: Stop loading after 10 seconds even if no data arrives
+        setTimeout(() => {
+          if (isMountedRef.current && loading) {
+            console.warn('⏱️ Loading timeout reached - stopping loading spinner');
+            setLoading(false);
+            if (cryptoData.length === 0) {
+              setError('Unable to load data. Please check your internet connection and refresh the page.');
+            }
+          }
+        }, 10000);
+
       } catch (e: unknown) {
         console.error('Error initializing dashboard:', e);
         if (isMountedRef.current) {

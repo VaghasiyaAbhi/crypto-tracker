@@ -90,7 +90,7 @@ function UpgradePlanContent() {
     };
 
     return (
-        <div className="flex flex-col min-h-screen p-6 bg-gray-100 font-sans">
+        <div className="flex flex-col min-h-screen bg-gray-100 font-sans">
             <Header />
             <div className="container mx-auto px-6 py-8 flex-grow flex items-center justify-center">
                 <div className="w-full max-w-4xl space-y-8">

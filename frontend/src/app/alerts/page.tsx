@@ -377,9 +377,9 @@ export default function AlertsPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen p-3 sm:p-4 md:p-6 bg-gray-100">
+    <div className="flex flex-col min-h-screen bg-gray-100">
       <Header />
-      <div className="w-full max-w-5xl space-y-4 sm:space-y-6 md:space-y-8 mx-auto mt-4">
+      <div className="w-full max-w-5xl space-y-4 sm:space-y-6 md:space-y-8 mx-auto mt-4 px-3 sm:px-4 md:px-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 sm:pb-4 border-b border-gray-200 gap-2">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">Manage Alerts</h1>
           <p className="text-xs sm:text-sm text-gray-600">Get notified about market changes</p>
