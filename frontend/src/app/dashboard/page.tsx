@@ -501,6 +501,15 @@ export default function DashboardPage() {
     };
 
     const connectWebSocket = (token: string) => {
+      // Prevent multiple connections
+      if (socketRef.current) {
+        if (socketRef.current.readyState === WebSocket.CONNECTING || 
+            socketRef.current.readyState === WebSocket.OPEN) {
+          console.log('⚠️ WebSocket already connecting/connected, skipping duplicate connection');
+          return;
+        }
+      }
+
       const isLocal = window.location.hostname === 'localhost';
       const localWsUrl = 'ws://localhost:8080';
       const productionWsUrl = process.env.NEXT_PUBLIC_WS_URL || `wss://${window.location.host}`;
@@ -517,25 +526,21 @@ export default function DashboardPage() {
       socketRef.current.onopen = () => {
         console.log('✅ WebSocket connected!');
         setIsWebSocketReady(true); // Mark WebSocket as ready
-        setIsRefreshing(true);
+        setIsRefreshing(false); // Not refreshing on initial connect
         setLastUpdateTime(new Date().toLocaleTimeString());
         
-        // Request initial snapshot - wait a bit for connection to stabilize
-        setTimeout(() => {
-          if (socketRef.current?.readyState === WebSocket.OPEN) {
-            socketRef.current.send(JSON.stringify({ 
-              type: 'request_snapshot', 
-              sort_by: 'profit', 
-              sort_order: 'desc', 
-              page_size: 500 
-            }));
-          }
-        }, 100);
+        // Don't request snapshot on initial connect - we already have REST API data
+        // WebSocket will receive delta updates automatically from the broadcaster
       };
 
       socketRef.current.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
+          
+          // Handle heartbeat - just ignore it
+          if (msg?.type === 'heartbeat') {
+            return;
+          }
           
           // Handle authentication check
           if (msg?.type === 'ws_ack') {
@@ -544,6 +549,8 @@ export default function DashboardPage() {
               handleLogout();
               return;
             }
+            console.log('✅ WebSocket authenticated - Plan:', msg.plan, 'Group:', msg.group);
+            return;
           }
           
           // Snapshot streaming
@@ -586,7 +593,7 @@ export default function DashboardPage() {
       };
 
       socketRef.current.onclose = (event) => {
-        console.log('❌ WebSocket closed');
+        console.log('❌ WebSocket closed - Code:', event.code, 'Reason:', event.reason, 'Clean:', event.wasClean);
         setIsWebSocketReady(false); // Mark WebSocket as not ready
         
         // Check if user is still logged in and component is mounted
