@@ -490,7 +490,7 @@ export default function DashboardPage() {
         // Always connect WebSocket for both free and paid users
         connectWebSocket(user.access_token);
 
-      } catch (e) {
+      } catch (e: unknown) {
         console.error('Error initializing dashboard:', e);
         if (isMountedRef.current) {
           setError('Failed to load data. Please refresh.');
@@ -580,7 +580,7 @@ export default function DashboardPage() {
               dataBatchRef.current.set(item.symbol, item);
             });
           }
-        } catch (e) {
+        } catch (e: unknown) {
           console.error('WebSocket message parse error:', e);
         }
       };
@@ -610,7 +610,7 @@ export default function DashboardPage() {
         // Errors are handled by onclose, just close the connection
         try { 
           socketRef.current?.close(); 
-        } catch (e) {
+        } catch (e: unknown) {
           // Ignore close errors
         }
       };
@@ -630,11 +630,6 @@ export default function DashboardPage() {
     // Auto-refresh countdown: Always run for all users (free and premium)
     // Premium users: auto-refresh data every 10 seconds
     // Free users: countdown runs but they need to click refresh button manually
-    
-    if (!isWebSocketReady) {
-      // WebSocket not connected yet, wait for it
-      return;
-    }
 
     console.log('🔄 Auto-refresh countdown started - isPremium:', isPremium, 'WebSocket ready:', isWebSocketReady);
 
@@ -711,7 +706,8 @@ export default function DashboardPage() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isPremium, itemCount, detectAndAnimateChanges, isWebSocketReady]);
+  }, [isPremium, itemCount, detectAndAnimateChanges]); // Removed isWebSocketReady to prevent restart on reconnect
+
 
   // Cleanup throttle map periodically to prevent memory leaks
   useEffect(() => {
@@ -733,7 +729,7 @@ export default function DashboardPage() {
   const requestWebSocketSnapshot = useCallback(() => {
     try {
       socketRef.current?.send(JSON.stringify({ type: 'request_snapshot', sort_by: 'profit', sort_order: 'desc', page_size: 500 }));
-    } catch (e) {
+    } catch (e: unknown) {
       console.error('Failed to request WS snapshot', e);
     }
   }, []);
@@ -1028,7 +1024,7 @@ export default function DashboardPage() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" disabled={!isPremium} className="w-full sm:w-auto">Select Columns</Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56 max-h-[400px] overflow-y-auto z-[200]" onSelect={(e) => e.preventDefault()}>
+                <DropdownMenuContent className="w-56 max-h-[400px] overflow-y-auto z-[200]" onSelect={(e: Event) => e.preventDefault()}>
                   <DropdownMenuLabel>Column Visibility</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {allColumns.map((column) => (
@@ -1094,7 +1090,7 @@ export default function DashboardPage() {
                                     <Filter className="h-4 w-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent className="w-64 p-2 z-[200]" onSelect={(e) => e.preventDefault()}>
+                                <DropdownMenuContent className="w-64 p-2 z-[200]" onSelect={(e: Event) => e.preventDefault()}>
                                   <div className="flex items-center border-b pb-2 mb-2">
                                     <Search className="h-4 w-4 mr-2 text-gray-400" />
                                     <Input
