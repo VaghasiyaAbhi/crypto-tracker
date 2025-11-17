@@ -473,6 +473,7 @@ export default function DashboardPage() {
             if (isMountedRef.current && initialData.length > 0) {
               setCryptoData(initialData);
               setLastUpdateTime(new Date().toLocaleTimeString());
+              setLoading(false); // Stop loading immediately after we have initial data
             }
           } else {
             console.warn('⚠️ Failed to fetch initial data, will rely on WebSocket');
@@ -487,10 +488,12 @@ export default function DashboardPage() {
 
       } catch (e) {
         console.error('Error initializing dashboard:', e);
-        if (isMountedRef.current) setError('Failed to load data. Please refresh.');
-      } finally {
-        if (isMountedRef.current) setLoading(false);
+        if (isMountedRef.current) {
+          setError('Failed to load data. Please refresh.');
+          setLoading(false);
+        }
       }
+      // Note: Don't set loading to false in finally block - let WebSocket or REST data do it
     };
 
     const connectWebSocket = (token: string) => {
@@ -553,6 +556,7 @@ export default function DashboardPage() {
               snapshotAccumRef.current = null;
               setCryptoData(merged);
               setIsRefreshing(false);
+              setLoading(false); // Stop loading spinner once WebSocket data arrives
             }
             return;
           }
