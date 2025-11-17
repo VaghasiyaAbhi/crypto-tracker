@@ -246,7 +246,9 @@ if not os.getenv('DOCKER_ENV'):
 
 # --- REST FRAMEWORK and AUTHENTICATION ---
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework_simplejwt.authentication.JWTAuthentication']
+    'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework_simplejwt.authentication.JWTAuthentication'],
+    # Convert Decimal fields to float instead of string to prevent "0E-10" string issues in frontend
+    'COERCE_DECIMAL_TO_STRING': False,
 }
 
 # --- JWT CONFIGURATION (15-minute session timeout) ---
