@@ -48,10 +48,10 @@ interface User {
 const exchanges = [
   { id: 'binance', name: 'Binance', logo: '/treding_logo/binance.png', baseUrl: 'https://www.binance.com/en/trade/' },
   { id: 'binance_futures', name: 'Binance Futures', logo: '/treding_logo/binance.png', baseUrl: 'https://www.binance.com/en/futures/' },
-  { id: 'mexc', name: 'MEXC', logo: '/treding_logo/mexc.png', baseUrl: 'https://www.mexc.com/exchange/' },
-  { id: 'bybit', name: 'Bybit', logo: '/treding_logo/bybit.png', baseUrl: 'https://www.bybit.com/en-US/trade/spot/' },
-  { id: 'kucoin', name: 'Kucoin', logo: '/treding_logo/kucoin.png', baseUrl: 'https://www.kucoin.com/trade/' },
-  { id: 'trading_view', name: 'Trading View', logo: '/treding_logo/tv.png', baseUrl: 'https://www.tradingview.com/chart/?symbol=' },
+  // { id: 'mexc', name: 'MEXC', logo: '/treding_logo/mexc.png', baseUrl: 'https://www.mexc.com/exchange/' },
+  // { id: 'bybit', name: 'Bybit', logo: '/treding_logo/bybit.png', baseUrl: 'https://www.bybit.com/en-US/trade/spot/' },
+  // { id: 'kucoin', name: 'Kucoin', logo: '/treding_logo/kucoin.png', baseUrl: 'https://www.kucoin.com/trade/' },
+  // { id: 'trading_view', name: 'Trading View', logo: '/treding_logo/tv.png', baseUrl: 'https://www.tradingview.com/chart/?symbol=' },
 ];
 
 const renderChange = (value: number | string) => {
@@ -955,12 +955,10 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="h-screen bg-gray-50 font-sans flex flex-col overflow-hidden">
-      <div className="p-4 md:p-6 pb-0">
-        <Header />
-      </div>
-      <main className="pt-4 md:pt-8 px-4 md:px-6 pb-4 md:pb-6 flex flex-col flex-grow min-h-0 h-full">
-        <div className="container mx-auto px-0">
+    <div className="min-h-screen bg-gray-50 font-sans flex flex-col">
+      <Header />
+      <main className="flex-1 w-full">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
           {/* Performance improvement info */}
           {/* <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="flex items-center space-x-2 text-sm text-blue-800">
@@ -973,7 +971,7 @@ export default function DashboardPage() {
                 </div>
               </div> */}
 
-          <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-4 md:mb-8 gap-4">
+          <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 lg:mb-8 gap-4">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 flex-wrap">
               <Select onValueChange={setItemCount} value={itemCount}>
                 <SelectTrigger className="w-full sm:w-[100px] bg-white">
@@ -1190,6 +1188,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </section>
+      </div>
       </main>
     </div>
   );
