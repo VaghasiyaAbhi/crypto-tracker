@@ -1068,10 +1068,10 @@ export default function DashboardPage() {
             </div>
           </section>
 
-        <section className="flex-grow min-h-0 h-0">
-          <Card className="h-full p-0 border-gray-200 overflow-hidden rounded-lg flex flex-col">
-            <CardContent className="p-0 overflow-hidden flex-grow">
-              <div ref={tableContainerRef} className="h-full max-h-[65vh] min-h-[300px] overflow-y-auto overflow-x-auto">
+        <section className="flex-1">
+          <Card className="border-gray-200 overflow-hidden rounded-lg">
+            <CardContent className="p-0">
+              <div ref={tableContainerRef} className="max-h-[65vh] min-h-[400px] overflow-y-auto overflow-x-auto">
                 <Table className="min-w-full text-xs sm:text-sm">
                   <TableHeader className="bg-gray-100 sticky top-0 z-30">
                     <TableRow className="border-b-0">
