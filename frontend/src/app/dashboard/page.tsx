@@ -17,6 +17,8 @@ import { useInactivityLogout } from '../../lib/useInactivityLogout';
 interface CryptoData {
   symbol: string;
   last_price: number;
+  bid_price: number;
+  ask_price: number;
   spread: number;
   high_price_24h: number;
   low_price_24h: number;
