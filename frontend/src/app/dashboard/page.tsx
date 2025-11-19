@@ -212,7 +212,8 @@ export default function DashboardPage() {
         type: 'request_snapshot',
         sort_by: 'profit',
         sort_order: 'desc',
-        page_size: pageSize
+        page_size: pageSize,
+        quote_currency: baseCurrency
       }));
     } catch (error) {
       console.error('Failed to request data refresh:', error);
@@ -220,7 +221,7 @@ export default function DashboardPage() {
 
     // Stop refreshing indicator after 2 seconds
     setTimeout(() => setIsRefreshing(false), 2000);
-  }, [itemCount]);
+  }, [itemCount, baseCurrency]);
 
   // WebSocket-only data fetching - no more REST API calls
   const requestWebSocketData = useCallback((pageSize: number = 100) => {
@@ -231,12 +232,13 @@ export default function DashboardPage() {
         type: 'request_snapshot',
         sort_by: 'profit',
         sort_order: 'desc',
-        page_size: pageSize
+        page_size: pageSize,
+        quote_currency: baseCurrency
       }));
     } catch (error) {
       console.error('Failed to request WebSocket data:', error);
     }
-  }, []);
+  }, [baseCurrency]);
 
   // Removed old fetchBackendData function - now using WebSocket-only approach
 
@@ -674,7 +676,8 @@ export default function DashboardPage() {
               type: 'request_snapshot',
               sort_by: 'profit',
               sort_order: 'desc',
-              page_size: pageSize
+              page_size: pageSize,
+              quote_currency: baseCurrency
             }));
           } else {
             if (!isPremium) {
@@ -726,8 +729,25 @@ export default function DashboardPage() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isPremium, itemCount, detectAndAnimateChanges]); // Removed isWebSocketReady to prevent restart on reconnect
+  }, [isPremium, itemCount, detectAndAnimateChanges, baseCurrency]); // Removed isWebSocketReady to prevent restart on reconnect
 
+  // Refresh data when currency changes
+  useEffect(() => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      console.log('💱 Currency changed to:', baseCurrency, '- requesting new data');
+      const pageSize = itemCount === 'All' ? 500 : Math.min(parseInt(itemCount), 100);
+      socketRef.current.send(JSON.stringify({
+        type: 'request_snapshot',
+        sort_by: 'profit',
+        sort_order: 'desc',
+        page_size: pageSize,
+        quote_currency: baseCurrency
+      }));
+      // Reset session state for new currency
+      setIsNewSession(true);
+      setSessionSortOrder([]);
+    }
+  }, [baseCurrency, itemCount]);
 
   // Cleanup throttle map periodically to prevent memory leaks
   useEffect(() => {
@@ -748,11 +768,17 @@ export default function DashboardPage() {
   // Free Refresh button should request a full snapshot over WS instead of REST
   const requestWebSocketSnapshot = useCallback(() => {
     try {
-      socketRef.current?.send(JSON.stringify({ type: 'request_snapshot', sort_by: 'profit', sort_order: 'desc', page_size: 500 }));
+      socketRef.current?.send(JSON.stringify({ 
+        type: 'request_snapshot', 
+        sort_by: 'profit', 
+        sort_order: 'desc', 
+        page_size: 500,
+        quote_currency: baseCurrency
+      }));
     } catch (e: unknown) {
       console.error('Failed to request WS snapshot', e);
     }
-  }, []);
+  }, [baseCurrency]);
 
   const sortedAndFilteredData = useMemo(() => {
     const base: CryptoData[] = Array.isArray(cryptoData) ? cryptoData : [];
@@ -926,20 +952,23 @@ export default function DashboardPage() {
     const selectedExchangeData = exchanges.find(e => e.id === selectedExchange);
 
     if (key === 'symbol' && selectedExchangeData) {
+      // Strip the quote currency from the symbol (e.g., BTCUSDT -> BTC)
+      const baseSymbol = crypto.symbol.replace(baseCurrency, '');
+      
       let tradeLink = selectedExchangeData.baseUrl;
-      const pair = crypto.symbol.replace('USDT', '_USDT');
+      const pair = crypto.symbol.replace(baseCurrency, `_${baseCurrency}`);
       switch (selectedExchange) {
         case 'binance': tradeLink += pair; break;
         case 'binance_futures': tradeLink += crypto.symbol; break;
         case 'mexc': tradeLink += pair; break;
-        case 'bybit': tradeLink += crypto.symbol.replace('USDT', '/USDT'); break;
-        case 'kucoin': tradeLink += crypto.symbol.replace('USDT', '-USDT'); break;
+        case 'bybit': tradeLink += crypto.symbol.replace(baseCurrency, `/${baseCurrency}`); break;
+        case 'kucoin': tradeLink += crypto.symbol.replace(baseCurrency, `-${baseCurrency}`); break;
         case 'trading_view': tradeLink += `BINANCE:${crypto.symbol}`; break;
         default: tradeLink += pair; break;
       }
       return (
         <a href={tradeLink} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2">
-          <span className="font-medium text-lg">{crypto.symbol.replace('USDT', '')}</span>
+          <span className="font-medium text-lg">{baseSymbol}</span>
           <div className="h-5 w-5 relative flex items-center justify-center">
             <Image src={selectedExchangeData.logo} alt={selectedExchangeData.name} width={20} height={20} className="object-contain" />
           </div>
@@ -997,6 +1026,21 @@ export default function DashboardPage() {
                   <SelectItem value="100">100</SelectItem>
                 </SelectContent>
               </Select>
+              
+              {/* Currency Selector */}
+              <Select onValueChange={setBaseCurrency} value={baseCurrency}>
+                <SelectTrigger className="w-full sm:w-[120px] bg-white">
+                  <SelectValue placeholder="Currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USDT">USDT</SelectItem>
+                  <SelectItem value="USDC">USDC</SelectItem>
+                  <SelectItem value="FDUSD">FDUSD</SelectItem>
+                  <SelectItem value="BNB">BNB</SelectItem>
+                  <SelectItem value="BTC">BTC</SelectItem>
+                </SelectContent>
+              </Select>
+              
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input

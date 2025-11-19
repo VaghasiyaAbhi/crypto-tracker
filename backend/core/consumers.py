@@ -113,6 +113,13 @@ class CryptoConsumer(AsyncWebsocketConsumer):
         if msg_type == 'request_snapshot':
             sort_by = message.get('sort_by', 'profit')
             sort_order = message.get('sort_order', 'desc')
+            # Get quote currency preference (USDT, USDC, FDUSD, BNB, BTC)
+            quote_currency = message.get('quote_currency', 'USDT').upper()
+            # Validate quote currency
+            valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC']
+            if quote_currency not in valid_currencies:
+                quote_currency = 'USDT'
+            
             # Determine sorting field similar to REST view
             sort_field = '-price_change_percent_24h'
             if sort_by == 'volume':
@@ -135,27 +142,28 @@ class CryptoConsumer(AsyncWebsocketConsumer):
 
             # Chunk and send snapshot to avoid giant frames
             page_size = int(message.get('page_size') or 500)
-            # Only count USDT pairs to match what we're actually sending
+            # Count pairs for selected quote currency
             total_count = await database_sync_to_async(
-                lambda: CryptoData.objects.filter(symbol__endswith='USDT').count()
+                lambda: CryptoData.objects.filter(symbol__endswith=quote_currency).count()
             )()
             total_pages = (total_count + page_size - 1) // page_size if page_size > 0 else 1
 
             for page in range(total_pages):
                 offset = page * page_size
-                data_chunk = await self._get_snapshot_chunk(serializer_class, sort_field, offset, page_size)
+                data_chunk = await self._get_snapshot_chunk(serializer_class, sort_field, offset, page_size, quote_currency)
                 await self.send(text_data=json.dumps({
                     'type': 'snapshot',
                     'chunk': page + 1,
                     'total_chunks': total_pages,
                     'total_count': total_count,
+                    'quote_currency': quote_currency,
                     'data': data_chunk,
                 }, cls=DecimalEncoder))
 
     @database_sync_to_async
-    def _get_snapshot_chunk(self, serializer_class, sort_field: str, offset: int, limit: int):
-        # Filter to only USDT pairs like the REST API does
-        qs = CryptoData.objects.filter(symbol__endswith='USDT').order_by(sort_field)[offset:offset + limit]
+    def _get_snapshot_chunk(self, serializer_class, sort_field: str, offset: int, limit: int, quote_currency: str = 'USDT'):
+        # Filter to pairs with selected quote currency
+        qs = CryptoData.objects.filter(symbol__endswith=quote_currency).order_by(sort_field)[offset:offset + limit]
         return serializer_class(qs, many=True).data
 
     async def _heartbeat(self):
