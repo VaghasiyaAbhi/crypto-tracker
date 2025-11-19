@@ -70,7 +70,7 @@ class RegisterView(APIView):
             token = str(uuid.uuid4())
             user.activation_token = token
             user.save()
-            send_activation_email_task(user.email, user.first_name, token)
+            send_activation_email_task.delay(user.email, user.first_name, token)
             return Response({'message': 'User registered successfully. An activation email has been sent.'}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -86,7 +86,7 @@ class RequestLoginTokenView(APIView):
                 login_token = str(uuid.uuid4())
                 user.login_token = login_token
                 user.save()
-                send_login_token_email_task(email, user.first_name, login_token)
+                send_login_token_email_task.delay(email, user.first_name, login_token)
                 return Response({'message': 'A login link has been sent to your email.'}, status=status.HTTP_200_OK)
             except User.DoesNotExist:
                 return Response({'error': 'User with this email does not exist.'}, status=status.HTTP_404_NOT_FOUND)
