@@ -1029,50 +1029,17 @@ export default function DashboardPage() {
               
               {/* Currency Selector */}
               <Select onValueChange={setBaseCurrency} value={baseCurrency}>
-                <SelectTrigger className="w-full sm:w-[140px] bg-white">
-                  <SelectValue placeholder="Currency" />
+                <SelectTrigger className="w-full sm:w-[180px] bg-white">
+                  <SelectValue placeholder="Select Currency" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="USDT">
-                    <div className="flex items-center gap-2">
-                      <span>USDT</span>
-                      <span className="text-xs text-green-600">✓ Full Data</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="USDC">
-                    <div className="flex items-center gap-2">
-                      <span>USDC</span>
-                      <span className="text-xs text-amber-600">Basic Only</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="FDUSD">
-                    <div className="flex items-center gap-2">
-                      <span>FDUSD</span>
-                      <span className="text-xs text-amber-600">Basic Only</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="BNB">
-                    <div className="flex items-center gap-2">
-                      <span>BNB</span>
-                      <span className="text-xs text-amber-600">Basic Only</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="BTC">
-                    <div className="flex items-center gap-2">
-                      <span>BTC</span>
-                      <span className="text-xs text-amber-600">Basic Only</span>
-                    </div>
-                  </SelectItem>
+                  <SelectItem value="USDT">USDT</SelectItem>
+                  <SelectItem value="USDC">USDC</SelectItem>
+                  <SelectItem value="FDUSD">FDUSD</SelectItem>
+                  <SelectItem value="BNB">BNB</SelectItem>
+                  <SelectItem value="BTC">BTC</SelectItem>
                 </SelectContent>
               </Select>
-              
-              {/* Data Quality Warning for Non-USDT */}
-              {baseCurrency !== 'USDT' && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-700">
-                  <span>ℹ️</span>
-                  <span>{baseCurrency} pairs show basic data only (Price, Volume, 24h stats). Advanced metrics available for USDT pairs.</span>
-                </div>
-              )}
               
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />

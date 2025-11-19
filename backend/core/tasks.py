@@ -1443,15 +1443,14 @@ def send_login_token_email_task(self, email: str, first_name: str, token: str):
 def calculate_crypto_metrics_task(self):
     """
     Background task to calculate complex crypto metrics
-    OPTIMIZED: Only processes USDT pairs for fast, accurate calculations
-    Reduces load by 81% (from 3,315 to ~621 symbols)
+    UPDATED: Now processes ALL currencies (USDT, USDC, FDUSD, BNB, BTC)
+    Provides full metrics for all trading pairs
     """
     try:
-        logger.info("🚀 Starting USDT-only crypto metrics calculation (optimized)")
+        logger.info("🚀 Starting crypto metrics calculation for ALL currencies")
         
-        # Get ONLY USDT crypto data - this is 81% faster!
+        # Get ALL crypto data across all quote currencies
         crypto_symbols = list(CryptoData.objects.filter(
-            symbol__endswith='USDT',
             last_price__isnull=False,
             quote_volume_24h__gt=0  # Only active pairs with volume
         ).values_list('symbol', flat=True))
