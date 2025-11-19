@@ -1040,7 +1040,15 @@ export default function DashboardPage() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" disabled={!isPremium} className="w-full sm:w-auto">Select Columns</Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-64 max-h-[500px] overflow-y-auto z-[200]" onSelect={(e: Event) => e.preventDefault()}>
+                <DropdownMenuContent 
+                  className="w-64 max-h-[500px] overflow-y-auto z-[200]" 
+                  onInteractOutside={(e: Event) => {
+                    // Allow closing when clicking outside
+                  }}
+                  onEscapeKeyDown={(e: KeyboardEvent) => {
+                    // Allow closing with Escape key
+                  }}
+                >
                   <DropdownMenuLabel>Column Visibility</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   
@@ -1050,7 +1058,9 @@ export default function DashboardPage() {
                       variant="outline" 
                       size="sm" 
                       className="flex-1 h-8 text-xs"
-                      onClick={() => {
+                      onClick={(e: React.MouseEvent) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         const newColumns = new Set(allColumns.map(col => col.key));
                         setVisibleColumns(newColumns);
                       }}
@@ -1061,7 +1071,9 @@ export default function DashboardPage() {
                       variant="outline" 
                       size="sm" 
                       className="flex-1 h-8 text-xs"
-                      onClick={() => {
+                      onClick={(e: React.MouseEvent) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         // Keep only the symbol column visible
                         setVisibleColumns(new Set(['symbol']));
                       }}
@@ -1077,6 +1089,10 @@ export default function DashboardPage() {
                         key={column.key}
                         checked={visibleColumns.has(column.key)}
                         onCheckedChange={() => toggleColumn(column.key)}
+                        onSelect={(e: Event) => {
+                          // Prevent dropdown from closing when clicking checkbox
+                          e.preventDefault();
+                        }}
                         className="cursor-pointer"
                       >
                         {column.title}
