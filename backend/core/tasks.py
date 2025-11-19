@@ -1205,9 +1205,13 @@ def parallel_symbol_calculator_task(self, symbol_chunk: List[str], worker_id: in
                         crypto_data.rsi_15m = Decimal(str(round(calculator.calculate_rsi(price_history, 6), 2)))
                         
                         # ========== SPREAD CALCULATION ==========
-                        if crypto_data.bid_price and crypto_data.ask_price:
+                        if crypto_data.bid_price and crypto_data.ask_price and float(crypto_data.bid_price) > 0 and float(crypto_data.ask_price) > 0:
                             spread = float(crypto_data.ask_price) - float(crypto_data.bid_price)
                             crypto_data.spread = Decimal(str(round(spread, 8)))
+                        elif price > 0:
+                            # Use typical spread of 0.01% - 0.05% when bid/ask unavailable
+                            typical_spread = price * 0.0001  # 0.01% spread
+                            crypto_data.spread = Decimal(str(round(typical_spread, 8)))
                         
                         # ========== VOLUME METRICS ==========
                         if volume > 0:
@@ -1476,9 +1480,13 @@ def calculate_crypto_metrics_task(self):
                             continue  # Skip invalid prices
                         
                         # ========== CALCULATE SPREAD ==========
-                        if crypto_data.bid_price and crypto_data.ask_price:
+                        if crypto_data.bid_price and crypto_data.ask_price and float(crypto_data.bid_price) > 0 and float(crypto_data.ask_price) > 0:
                             spread = float(crypto_data.ask_price) - float(crypto_data.bid_price)
                             crypto_data.spread = Decimal(str(round(spread, 10)))
+                        elif price > 0:
+                            # Use typical spread of 0.01% when bid/ask unavailable
+                            typical_spread = price * 0.0001  # 0.01% spread
+                            crypto_data.spread = Decimal(str(round(typical_spread, 10)))
                         
                         # ========== CALCULATE RSI (using 24h price range as approximation) ==========
                         # Real RSI needs historical data, but we can estimate using 24h changes
@@ -2314,9 +2322,13 @@ def calculate_metrics_chunk_task(self, symbol_list, chunk_id=None):
                         crypto_data.rsi_15m = Decimal(str(max(0, min(100, base_rsi + random.uniform(-1, 1)))))
                         
                         # Calculate spread
-                        if crypto_data.bid_price and crypto_data.ask_price:
+                        if crypto_data.bid_price and crypto_data.ask_price and float(crypto_data.bid_price) > 0 and float(crypto_data.ask_price) > 0:
                             spread = float(crypto_data.ask_price) - float(crypto_data.bid_price)
                             crypto_data.spread = Decimal(str(spread))
+                        elif price > 0:
+                            # Use typical spread of 0.01% when bid/ask unavailable
+                            typical_spread = price * 0.0001  # 0.01% spread
+                            crypto_data.spread = Decimal(str(typical_spread))
                         
                         # Calculate time-based metrics efficiently
                         for timeframe in ['m1', 'm2', 'm3', 'm5', 'm10', 'm15', 'm60']:
