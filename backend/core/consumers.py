@@ -135,7 +135,10 @@ class CryptoConsumer(AsyncWebsocketConsumer):
 
             # Chunk and send snapshot to avoid giant frames
             page_size = int(message.get('page_size') or 500)
-            total_count = await database_sync_to_async(CryptoData.objects.count)()
+            # Only count USDT pairs to match what we're actually sending
+            total_count = await database_sync_to_async(
+                lambda: CryptoData.objects.filter(symbol__endswith='USDT').count()
+            )()
             total_pages = (total_count + page_size - 1) // page_size if page_size > 0 else 1
 
             for page in range(total_pages):
@@ -151,7 +154,8 @@ class CryptoConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _get_snapshot_chunk(self, serializer_class, sort_field: str, offset: int, limit: int):
-        qs = CryptoData.objects.all().order_by(sort_field)[offset:offset + limit]
+        # Filter to only USDT pairs like the REST API does
+        qs = CryptoData.objects.filter(symbol__endswith='USDT').order_by(sort_field)[offset:offset + limit]
         return serializer_class(qs, many=True).data
 
     async def _heartbeat(self):
