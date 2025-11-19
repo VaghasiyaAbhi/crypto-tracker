@@ -1015,6 +1015,20 @@ export default function DashboardPage() {
 
           <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 lg:mb-8 gap-4">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 flex-wrap">
+              {/* Currency Selector - First (Most Important) */}
+              <Select onValueChange={setBaseCurrency} value={baseCurrency}>
+                <SelectTrigger className="w-full sm:w-[180px] bg-white font-semibold">
+                  <SelectValue placeholder="Select Currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USDT">USDT</SelectItem>
+                  <SelectItem value="USDC">USDC</SelectItem>
+                  <SelectItem value="FDUSD">FDUSD</SelectItem>
+                  <SelectItem value="BNB">BNB</SelectItem>
+                  <SelectItem value="BTC">BTC</SelectItem>
+                </SelectContent>
+              </Select>
+              
               <Select onValueChange={setItemCount} value={itemCount}>
                 <SelectTrigger className="w-full sm:w-[100px] bg-white">
                   <SelectValue placeholder="Count" />
@@ -1024,20 +1038,6 @@ export default function DashboardPage() {
                   <SelectItem value="25">25</SelectItem>
                   <SelectItem value="50">50</SelectItem>
                   <SelectItem value="100">100</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              {/* Currency Selector */}
-              <Select onValueChange={setBaseCurrency} value={baseCurrency}>
-                <SelectTrigger className="w-full sm:w-[180px] bg-white">
-                  <SelectValue placeholder="Select Currency" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="USDT">USDT</SelectItem>
-                  <SelectItem value="USDC">USDC</SelectItem>
-                  <SelectItem value="FDUSD">FDUSD</SelectItem>
-                  <SelectItem value="BNB">BNB</SelectItem>
-                  <SelectItem value="BTC">BTC</SelectItem>
                 </SelectContent>
               </Select>
               
