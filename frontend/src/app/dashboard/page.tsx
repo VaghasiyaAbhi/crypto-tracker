@@ -939,7 +939,7 @@ export default function DashboardPage() {
       }
       return (
         <a href={tradeLink} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2">
-          <span className="font-medium text-lg">{crypto.symbol}</span>
+          <span className="font-medium text-lg">{crypto.symbol.replace('USDT', '')}</span>
           <div className="h-5 w-5 relative flex items-center justify-center">
             <Image src={selectedExchangeData.logo} alt={selectedExchangeData.name} width={20} height={20} className="object-contain" />
           </div>
