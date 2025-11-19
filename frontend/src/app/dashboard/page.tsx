@@ -1040,18 +1040,49 @@ export default function DashboardPage() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" disabled={!isPremium} className="w-full sm:w-auto">Select Columns</Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56 max-h-[400px] overflow-y-auto z-[200]" onSelect={(e: Event) => e.preventDefault()}>
+                <DropdownMenuContent className="w-64 max-h-[500px] overflow-y-auto z-[200]" onSelect={(e: Event) => e.preventDefault()}>
                   <DropdownMenuLabel>Column Visibility</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {allColumns.map((column) => (
-                    <DropdownMenuCheckboxItem
-                      key={column.key}
-                      checked={visibleColumns.has(column.key)}
-                      onCheckedChange={() => toggleColumn(column.key)}
+                  
+                  {/* Select All / Clear All buttons */}
+                  <div className="flex gap-2 px-2 py-2 border-b">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1 h-8 text-xs"
+                      onClick={() => {
+                        const newColumns = new Set(allColumns.map(col => col.key));
+                        setVisibleColumns(newColumns);
+                      }}
                     >
-                      {column.title}
-                    </DropdownMenuCheckboxItem>
-                  ))}
+                      Select All
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1 h-8 text-xs"
+                      onClick={() => {
+                        // Keep only the symbol column visible
+                        setVisibleColumns(new Set(['symbol']));
+                      }}
+                    >
+                      Clear All
+                    </Button>
+                  </div>
+
+                  {/* Column checkboxes */}
+                  <div className="py-1">
+                    {allColumns.map((column) => (
+                      <DropdownMenuCheckboxItem
+                        key={column.key}
+                        checked={visibleColumns.has(column.key)}
+                        onCheckedChange={() => toggleColumn(column.key)}
+                        className="cursor-pointer"
+                      >
+                        {column.title}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </div>
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -1080,12 +1111,11 @@ export default function DashboardPage() {
           </section>
 
         <section className="flex-1">
-          <Card className="border-gray-200 overflow-hidden rounded-lg">
-            <CardContent className="p-0">
-              <div ref={tableContainerRef} className="max-h-[65vh] min-h-[400px] overflow-y-auto overflow-x-auto">
-                <Table className="min-w-full text-xs sm:text-sm">
-                  <TableHeader className="bg-gray-100 sticky top-0 z-30">
-                    <TableRow className="border-b-0">
+          <div className="bg-white overflow-hidden rounded-lg shadow-sm">
+            <div ref={tableContainerRef} className="max-h-[65vh] min-h-[400px] overflow-y-auto overflow-x-auto">
+              <Table className="min-w-full text-xs sm:text-sm">
+                <TableHeader className="bg-gray-100 sticky top-0 z-30">
+                  <TableRow className="border-b border-gray-200">
                       {allColumns.filter(col => visibleColumns.has(col.key)).map((col) => (
                         <TableHead
                           key={col.key}
@@ -1195,9 +1225,8 @@ export default function DashboardPage() {
                   </TableBody>
                 </Table>
               </div>
-            </CardContent>
-          </Card>
-        </section>
+            </div>
+          </section>
         </div>
       </main>
     </div>
