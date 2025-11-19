@@ -1671,8 +1671,8 @@ def calculate_crypto_metrics_task(self):
         # Clear cache to force fresh data fetch
         cache.clear()
         
-        logger.info(f"✅ USDT-only crypto metrics calculation completed. Updated {updated_count} symbols")
-        return f"✅ Successfully calculated metrics for {updated_count} USDT symbols (optimized)"
+        logger.info(f"✅ Crypto metrics calculation completed for ALL currencies. Updated {updated_count} symbols")
+        return f"✅ Successfully calculated metrics for {updated_count} symbols across all currencies (USDT, USDC, FDUSD, BNB, BTC)"
         
     except Exception as exc:
         logger.error(f"Failed to calculate crypto metrics: {exc}")
@@ -1726,7 +1726,7 @@ def fetch_binance_data_task(self):
     🚀 OPTIMIZED BATCH PROCESSOR for 95%+ Symbol Update Ratio
     
     Strategy:
-    - Processes ALL USDT symbols in optimized batches
+    - Processes ALL currencies (USDT, USDC, FDUSD, BNB, BTC) in optimized batches
     - Uses efficient bulk operations for speed
     - Targets 95%+ simultaneous updates
     - Simplified architecture for reliability
@@ -1737,7 +1737,7 @@ def fetch_binance_data_task(self):
         from django.db import transaction
         import time
         
-        logger.info("🚀 Starting OPTIMIZED BATCH PROCESSOR for 95%+ update ratio")
+        logger.info("🚀 Starting OPTIMIZED BATCH PROCESSOR for 95%+ update ratio across ALL currencies")
         
         # Fetch fresh data from Binance API
         url = 'https://api.binance.com/api/v3/ticker/24hr'
@@ -1746,13 +1746,14 @@ def fetch_binance_data_task(self):
         
         data = response.json()
         
-        # Filter for USDT pairs with volume (optimized dataset)
-        usdt_pairs = [item for item in data 
-                     if item['symbol'].endswith('USDT') 
+        # Filter for ALL quote currencies with volume (USDT, USDC, FDUSD, BNB, BTC)
+        valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC']
+        all_pairs = [item for item in data 
+                     if any(item['symbol'].endswith(currency) for currency in valid_currencies)
                      and float(item.get('quoteVolume', 0)) > 1000]  # $1K+ for broader coverage
         
-        total_symbols = len(usdt_pairs)
-        logger.info(f'📊 Processing {total_symbols} USDT symbols in optimized batches')
+        total_symbols = len(all_pairs)
+        logger.info(f'📊 Processing {total_symbols} symbols across ALL currencies (USDT, USDC, FDUSD, BNB, BTC) in optimized batches')
         
         # Process in optimized batches for maximum update ratio
         batch_size = 100  # Larger batches for efficiency
@@ -1764,7 +1765,7 @@ def fetch_binance_data_task(self):
         
         # Process all symbols in batches
         for i in range(0, total_symbols, batch_size):
-            batch = usdt_pairs[i:i + batch_size]
+            batch = all_pairs[i:i + batch_size]
             batch_count += 1
             
             logger.info(f"⚡ Processing batch {batch_count}: {len(batch)} symbols")
