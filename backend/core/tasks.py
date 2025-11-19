@@ -1556,6 +1556,44 @@ def calculate_crypto_metrics_task(self):
                             crypto_data.m60_high = Decimal(str(round(float(crypto_data.m60) * 1.06, 10)))
                             crypto_data.m60_low = Decimal(str(round(float(crypto_data.m60) * 0.94, 10)))
                         
+                        # ========== CALCULATE RANGE % (High-Low percentage) ==========
+                        # Range % = ((high - low) / low) * 100
+                        # Always calculate to prevent N/A in frontend
+                        if crypto_data.m1_high and crypto_data.m1_low and float(crypto_data.m1_low) > 0:
+                            crypto_data.m1_range_pct = Decimal(str(round(((float(crypto_data.m1_high) - float(crypto_data.m1_low)) / float(crypto_data.m1_low)) * 100, 4)))
+                        else:
+                            crypto_data.m1_range_pct = Decimal('0.0000')
+                            
+                        if crypto_data.m2_high and crypto_data.m2_low and float(crypto_data.m2_low) > 0:
+                            crypto_data.m2_range_pct = Decimal(str(round(((float(crypto_data.m2_high) - float(crypto_data.m2_low)) / float(crypto_data.m2_low)) * 100, 4)))
+                        else:
+                            crypto_data.m2_range_pct = Decimal('0.0000')
+                            
+                        if crypto_data.m3_high and crypto_data.m3_low and float(crypto_data.m3_low) > 0:
+                            crypto_data.m3_range_pct = Decimal(str(round(((float(crypto_data.m3_high) - float(crypto_data.m3_low)) / float(crypto_data.m3_low)) * 100, 4)))
+                        else:
+                            crypto_data.m3_range_pct = Decimal('0.0000')
+                            
+                        if crypto_data.m5_high and crypto_data.m5_low and float(crypto_data.m5_low) > 0:
+                            crypto_data.m5_range_pct = Decimal(str(round(((float(crypto_data.m5_high) - float(crypto_data.m5_low)) / float(crypto_data.m5_low)) * 100, 4)))
+                        else:
+                            crypto_data.m5_range_pct = Decimal('0.0000')
+                            
+                        if crypto_data.m10_high and crypto_data.m10_low and float(crypto_data.m10_low) > 0:
+                            crypto_data.m10_range_pct = Decimal(str(round(((float(crypto_data.m10_high) - float(crypto_data.m10_low)) / float(crypto_data.m10_low)) * 100, 4)))
+                        else:
+                            crypto_data.m10_range_pct = Decimal('0.0000')
+                            
+                        if crypto_data.m15_high and crypto_data.m15_low and float(crypto_data.m15_low) > 0:
+                            crypto_data.m15_range_pct = Decimal(str(round(((float(crypto_data.m15_high) - float(crypto_data.m15_low)) / float(crypto_data.m15_low)) * 100, 4)))
+                        else:
+                            crypto_data.m15_range_pct = Decimal('0.0000')
+                            
+                        if crypto_data.m60_high and crypto_data.m60_low and float(crypto_data.m60_low) > 0:
+                            crypto_data.m60_range_pct = Decimal(str(round(((float(crypto_data.m60_high) - float(crypto_data.m60_low)) / float(crypto_data.m60_low)) * 100, 4)))
+                        else:
+                            crypto_data.m60_range_pct = Decimal('0.0000')
+                        
                         # ========== CALCULATE RETURN % (R%) ==========
                         # Return % = ((current_price - timeframe_price) / timeframe_price) * 100
                         # Always calculate these to prevent N/A in frontend
