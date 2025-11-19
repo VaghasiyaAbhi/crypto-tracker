@@ -380,18 +380,24 @@ class BinanceDataView(APIView):
             page_size = min(int(request.GET.get('page_size', 100)), 500)  # Allow up to 500 symbols
             offset = (page - 1) * page_size
             
+            # Base currency filter - supports USDT, USDC, FDUSD, BNB, BTC
+            base_currency = request.GET.get('base_currency', 'USDT').upper()
+            valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC']
+            if base_currency not in valid_currencies:
+                base_currency = 'USDT'  # Default to USDT if invalid
+            
             # Sorting parameters
             sort_by = request.GET.get('sort_by', 'profit')  # profit, volume, latest, price
             sort_order = request.GET.get('sort_order', 'desc')  # asc, desc
             
-            # Build cache key with sorting
-            cache_key = f'crypto_data_{user.subscription_plan}_page_{page}_size_{page_size}_sort_{sort_by}_{sort_order}'
+            # Build cache key with sorting and base currency
+            cache_key = f'crypto_data_{user.subscription_plan}_{base_currency}_page_{page}_size_{page_size}_sort_{sort_by}_{sort_order}'
             cached_data = cache.get(cache_key)
             
             if cached_data is None:
-                # Get total count for pagination - OPTIMIZED: USDT pairs only
+                # Get total count for pagination - supports ALL currencies
                 total_count = CryptoData.objects.filter(
-                    symbol__endswith='USDT',
+                    symbol__endswith=base_currency,
                     last_price__isnull=False,
                     quote_volume_24h__gt=0
                 ).count()
@@ -412,9 +418,9 @@ class BinanceDataView(APIView):
                     sort_field = sort_field.lstrip('-')
                 
                 # Get fresh data from database with pagination and sorting
-                # OPTIMIZED: Only USDT pairs with active trading
+                # Supports ALL currencies based on base_currency parameter
                 crypto_data = CryptoData.objects.filter(
-                    symbol__endswith='USDT',
+                    symbol__endswith=base_currency,
                     last_price__isnull=False,
                     quote_volume_24h__gt=0
                 ).order_by(sort_field)[offset:offset + page_size]
@@ -432,6 +438,7 @@ class BinanceDataView(APIView):
                     'data': serializer.data,
                     'plan': user.subscription_plan,
                     'is_premium': user.is_premium_user or user.subscription_plan in ['basic', 'enterprise'],
+                    'base_currency': base_currency,  # Include selected base currency
                     'pagination': {
                         'current_page': page,
                         'page_size': page_size,
