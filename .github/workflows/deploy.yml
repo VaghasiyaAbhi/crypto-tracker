@@ -13,11 +13,11 @@ jobs:
     
     steps:
       - name: 🚀 Deploy and Restart All Services
-        uses: appleboy/ssh-action@v1.0.0
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
             echo "🔄 Starting auto-deployment..."
@@ -26,50 +26,82 @@ jobs:
             # Navigate to project directory
             cd /root/crypto-tracker
             
+            # Store current commit before pulling
+            BEFORE_COMMIT=$(git rev-parse HEAD)
+            
             # Pull latest changes from GitHub
             echo "📥 Pulling latest code from GitHub..."
+            git fetch origin main
             git reset --hard origin/main
-            git pull origin main
             
-            # Check if Docker images need rebuilding (only if Dockerfile changed)
+            AFTER_COMMIT=$(git rev-parse HEAD)
+            
+            # Get list of changed files
+            CHANGED_FILES=$(git diff --name-only $BEFORE_COMMIT $AFTER_COMMIT)
+            echo "📝 Changed files:"
+            echo "$CHANGED_FILES"
             echo ""
-            echo "� Checking for Docker changes..."
-            if git diff HEAD@{1} HEAD --name-only | grep -E "Dockerfile|requirements.txt|package.json|package-lock.json"; then
-              echo "📦 Dependencies changed - rebuilding images..."
-              docker-compose build
+            
+            # Check if frontend changed
+            if echo "$CHANGED_FILES" | grep -q "^frontend/"; then
+              echo "� Frontend changes detected - rebuilding..."
+              
+              # Stop and remove frontend container
+              docker-compose stop frontend
+              docker rm -f crypto-tracker_frontend_1 || true
+              
+              # Rebuild frontend with no cache (to get new .env.production)
+              cd frontend
+              docker build --no-cache -t crypto-tracker_frontend .
+              cd ..
+              
+              # Start fresh frontend container
+              docker-compose up -d frontend
+              
+              echo "✅ Frontend rebuilt and restarted"
+              sleep 5
             else
-              echo "✅ No dependency changes - skipping rebuild"
+              echo "ℹ️  No frontend changes - skipping rebuild"
             fi
             
-            # Restart only affected services (backend, frontend, workers)
-            echo ""
-            echo "🔄 Restarting application services..."
-            docker-compose restart backend1 data-worker calc-worker celery-worker celery-beat frontend
+            # Check if backend changed
+            if echo "$CHANGED_FILES" | grep -q "^backend/"; then
+              echo "� Backend changes detected..."
+              
+              # Check if requirements.txt changed
+              if echo "$CHANGED_FILES" | grep -q "requirements.txt"; then
+                echo "📦 Python dependencies changed - rebuilding backend..."
+                docker-compose build backend1
+              fi
+              
+              # Restart backend services
+              echo "🔄 Restarting backend services..."
+              docker-compose restart backend1 celery celery-beat
+              
+              echo "✅ Backend restarted"
+              sleep 5
+            else
+              echo "ℹ️  No backend changes"
+            fi
             
-            # Wait for services to start
-            echo ""
-            echo "⏳ Waiting for services to restart (10 seconds)..."
-            sleep 10
+            # Check if nginx config changed
+            if echo "$CHANGED_FILES" | grep -q "^nginx/"; then
+              echo "� Nginx config changed - restarting..."
+              docker-compose restart nginx
+              echo "✅ Nginx restarted"
+            fi
             
-            # Run migrations if needed (only if migration files changed)
-            echo ""
-            echo "📊 Checking for database migrations..."
-            if git diff HEAD@{1} HEAD --name-only | grep -E "migrations/"; then
-              echo "Running migrations..."
+            # Run migrations if migration files changed
+            if echo "$CHANGED_FILES" | grep -q "migrations/"; then
+              echo "📊 Running database migrations..."
               docker-compose exec -T backend1 python manage.py migrate --noinput
-            else
-              echo "✅ No migration changes detected"
+              echo "✅ Migrations complete"
             fi
             
-            # Collect static files (only if static files changed)
+            # Wait for all services to stabilize
             echo ""
-            echo "📁 Checking for static file changes..."
-            if git diff HEAD@{1} HEAD --name-only | grep -E "static/|frontend/"; then
-              echo "Collecting static files..."
-              docker-compose exec -T backend1 python manage.py collectstatic --noinput || echo "Static files already up to date"
-            else
-              echo "✅ No static file changes detected"
-            fi
+            echo "⏳ Waiting for services to stabilize..."
+            sleep 10
             
             # Show running containers status
             echo ""
@@ -77,10 +109,12 @@ jobs:
             echo "✅ Deployment Complete!"
             echo "=================================================="
             echo ""
-            docker-compose ps
+            echo "📊 Container Status:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep crypto-tracker
             
             echo ""
-            echo "🌐 Your site is live at: https://volusignal.com"
+            echo "🌐 Site: https://volusignal.com"
             echo "🔒 SSL: Enabled"
             echo "📅 Deployed: $(date)"
+            echo "📝 Commit: $AFTER_COMMIT"
             echo "=================================================="
