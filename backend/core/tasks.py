@@ -1320,14 +1320,17 @@ def fetch_historical_klines(symbol: str, interval: str = '1m', limit: int = 60) 
         cache_key = f'klines_{symbol}_{interval}_{limit}'
         cached_data = cache.get(cache_key)
         if cached_data:
+            logger.info(f"📦 CACHE HIT: {symbol} klines from cache")
             return cached_data
         
         # Fetch 60 minutes of 1-minute candles
+        logger.info(f"🌐 FETCHING REAL DATA: {symbol} from Binance klines API")
         url = f'https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}'
         response = requests.get(url, timeout=5)
         response.raise_for_status()
         
         klines = response.json()
+        logger.info(f"✅ API SUCCESS: {symbol} - received {len(klines)} candles")
         
         if not klines or len(klines) < 2:
             return {}
@@ -1352,13 +1355,22 @@ def fetch_historical_klines(symbol: str, interval: str = '1m', limit: int = 60) 
         if len(klines) >= 61:
             historical_prices['60m_ago'] = float(klines[-61][4])  # 60 minutes ago (1 hour)
         
+        # Log the extracted historical prices
+        logger.info(f"📊 REAL DATA EXTRACTED for {symbol}:")
+        logger.info(f"   1m ago: ${historical_prices.get('1m_ago', 0):.4f}")
+        logger.info(f"   5m ago: ${historical_prices.get('5m_ago', 0):.4f}")
+        logger.info(f"   15m ago: ${historical_prices.get('15m_ago', 0):.4f}")
+        logger.info(f"   60m ago: ${historical_prices.get('60m_ago', 0):.4f}")
+        
         # Cache for 30 seconds
         cache.set(cache_key, historical_prices, 30)
+        logger.info(f"💾 CACHED: {symbol} data cached for 30 seconds")
         
         return historical_prices
         
     except Exception as e:
-        logger.warning(f"Failed to fetch klines for {symbol}: {e}")
+        logger.error(f"❌ KLINES API FAILED for {symbol}: {e}")
+        logger.error(f"   Will use FALLBACK calculation (24h estimates)")
         return {}
 
 @shared_task(bind=True)
@@ -1570,12 +1582,15 @@ def calculate_crypto_metrics_task(self):
                         
                         if historical_prices and len(historical_prices) >= 3:
                             # ✅ USING REAL HISTORICAL DATA from Binance klines API
+                            logger.info(f"✅ USING REAL DATA for {crypto_data.symbol}")
                             # Calculate actual percentage changes from real historical prices
                             current_price = price
                             
                             # 1-minute change (real)
                             if '1m_ago' in historical_prices:
-                                crypto_data.m1 = Decimal(str(round(((current_price - historical_prices['1m_ago']) / historical_prices['1m_ago']) * 100, 4)))
+                                m1_pct = ((current_price - historical_prices['1m_ago']) / historical_prices['1m_ago']) * 100
+                                crypto_data.m1 = Decimal(str(round(m1_pct, 4)))
+                                logger.info(f"   1m%: {m1_pct:.4f}% (current: ${current_price:.4f}, 1m ago: ${historical_prices['1m_ago']:.4f})")
                             else:
                                 crypto_data.m1 = Decimal('0.0000')
                             
@@ -1626,6 +1641,8 @@ def calculate_crypto_metrics_task(self):
                             
                         elif high_24h > low_24h and price > 0 and crypto_data.price_change_percent_24h:
                             # ⚠️ FALLBACK: Estimate from 24h data if klines API unavailable
+                            logger.warning(f"⚠️ USING FALLBACK (24h estimates) for {crypto_data.symbol}")
+                            logger.warning(f"   Reason: Klines API unavailable or rate limited")
                             # This happens during rate limiting or API errors
                             change_24h = float(crypto_data.price_change_percent_24h)
                             
