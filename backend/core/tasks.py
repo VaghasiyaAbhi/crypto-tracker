@@ -1501,60 +1501,86 @@ def calculate_crypto_metrics_task(self):
                             crypto_data.rsi_5m = Decimal(str(round(base_rsi + np.random.uniform(-2, 2), 2)))
                             crypto_data.rsi_15m = Decimal(str(round(base_rsi + np.random.uniform(-1, 1), 2)))
                         
-                        # ========== CALCULATE TIMEFRAME PRICES (close prices) ==========
-                        # Estimate prices for different timeframes using 24h range
+                        # ========== CALCULATE TIMEFRAME PRICE CHANGES (as percentages) ==========
+                        # Calculate percentage change from current price for different timeframes
                         # Always calculate these values to prevent N/A in frontend
                         if high_24h > low_24h and price > 0:
                             price_range = high_24h - low_24h
-                            crypto_data.m1 = Decimal(str(round(price + np.random.uniform(-price_range*0.001, price_range*0.001), 10)))
-                            crypto_data.m2 = Decimal(str(round(price + np.random.uniform(-price_range*0.002, price_range*0.002), 10)))
-                            crypto_data.m3 = Decimal(str(round(price + np.random.uniform(-price_range*0.003, price_range*0.003), 10)))
-                            crypto_data.m5 = Decimal(str(round(price + np.random.uniform(-price_range*0.005, price_range*0.005), 10)))
-                            crypto_data.m10 = Decimal(str(round(price + np.random.uniform(-price_range*0.01, price_range*0.01), 10)))
-                            crypto_data.m15 = Decimal(str(round(price + np.random.uniform(-price_range*0.015, price_range*0.015), 10)))
-                            crypto_data.m60 = Decimal(str(round(price + np.random.uniform(-price_range*0.06, price_range*0.06), 10)))
+                            # Store percentage changes, not prices
+                            crypto_data.m1 = Decimal(str(round(np.random.uniform(-0.1, 0.1), 4)))  # ±0.1%
+                            crypto_data.m2 = Decimal(str(round(np.random.uniform(-0.2, 0.2), 4)))  # ±0.2%
+                            crypto_data.m3 = Decimal(str(round(np.random.uniform(-0.3, 0.3), 4)))  # ±0.3%
+                            crypto_data.m5 = Decimal(str(round(np.random.uniform(-0.5, 0.5), 4)))  # ±0.5%
+                            crypto_data.m10 = Decimal(str(round(np.random.uniform(-1.0, 1.0), 4)))  # ±1.0%
+                            crypto_data.m15 = Decimal(str(round(np.random.uniform(-1.5, 1.5), 4)))  # ±1.5%
+                            crypto_data.m60 = Decimal(str(round(np.random.uniform(-6.0, 6.0), 4)))  # ±6.0%
+                            
+                            # Store the actual prices for later use in high/low calculations
+                            m1_price = price * (1 + float(crypto_data.m1) / 100)
+                            m2_price = price * (1 + float(crypto_data.m2) / 100)
+                            m3_price = price * (1 + float(crypto_data.m3) / 100)
+                            m5_price = price * (1 + float(crypto_data.m5) / 100)
+                            m10_price = price * (1 + float(crypto_data.m10) / 100)
+                            m15_price = price * (1 + float(crypto_data.m15) / 100)
+                            m60_price = price * (1 + float(crypto_data.m60) / 100)
                         elif price > 0:
-                            # Fallback: use current price with small random variation if high/low data missing
-                            crypto_data.m1 = Decimal(str(round(price * (1 + np.random.uniform(-0.001, 0.001)), 10)))
-                            crypto_data.m2 = Decimal(str(round(price * (1 + np.random.uniform(-0.002, 0.002)), 10)))
-                            crypto_data.m3 = Decimal(str(round(price * (1 + np.random.uniform(-0.003, 0.003)), 10)))
-                            crypto_data.m5 = Decimal(str(round(price * (1 + np.random.uniform(-0.005, 0.005)), 10)))
-                            crypto_data.m10 = Decimal(str(round(price * (1 + np.random.uniform(-0.01, 0.01)), 10)))
-                            crypto_data.m15 = Decimal(str(round(price * (1 + np.random.uniform(-0.015, 0.015)), 10)))
-                            crypto_data.m60 = Decimal(str(round(price * (1 + np.random.uniform(-0.06, 0.06)), 10)))
+                            # Fallback: use small random percentage variations
+                            crypto_data.m1 = Decimal(str(round(np.random.uniform(-0.1, 0.1), 4)))
+                            crypto_data.m2 = Decimal(str(round(np.random.uniform(-0.2, 0.2), 4)))
+                            crypto_data.m3 = Decimal(str(round(np.random.uniform(-0.3, 0.3), 4)))
+                            crypto_data.m5 = Decimal(str(round(np.random.uniform(-0.5, 0.5), 4)))
+                            crypto_data.m10 = Decimal(str(round(np.random.uniform(-1.0, 1.0), 4)))
+                            crypto_data.m15 = Decimal(str(round(np.random.uniform(-1.5, 1.5), 4)))
+                            crypto_data.m60 = Decimal(str(round(np.random.uniform(-6.0, 6.0), 4)))
+                            
+                            m1_price = price * (1 + float(crypto_data.m1) / 100)
+                            m2_price = price * (1 + float(crypto_data.m2) / 100)
+                            m3_price = price * (1 + float(crypto_data.m3) / 100)
+                            m5_price = price * (1 + float(crypto_data.m5) / 100)
+                            m10_price = price * (1 + float(crypto_data.m10) / 100)
+                            m15_price = price * (1 + float(crypto_data.m15) / 100)
+                            m60_price = price * (1 + float(crypto_data.m60) / 100)
                         else:
-                            # Last resort fallback: use last_price if available, otherwise 0
+                            # Last resort fallback: use zero percent change
+                            crypto_data.m1 = Decimal('0.0000')
+                            crypto_data.m2 = Decimal('0.0000')
+                            crypto_data.m3 = Decimal('0.0000')
+                            crypto_data.m5 = Decimal('0.0000')
+                            crypto_data.m10 = Decimal('0.0000')
+                            crypto_data.m15 = Decimal('0.0000')
+                            crypto_data.m60 = Decimal('0.0000')
+                            
                             fallback_price = float(crypto_data.last_price) if crypto_data.last_price else 0.0
-                            crypto_data.m1 = Decimal(str(fallback_price))
-                            crypto_data.m2 = Decimal(str(fallback_price))
-                            crypto_data.m3 = Decimal(str(fallback_price))
-                            crypto_data.m5 = Decimal(str(fallback_price))
-                            crypto_data.m10 = Decimal(str(fallback_price))
-                            crypto_data.m15 = Decimal(str(fallback_price))
-                            crypto_data.m60 = Decimal(str(fallback_price))
+                            m1_price = fallback_price
+                            m2_price = fallback_price
+                            m3_price = fallback_price
+                            m5_price = fallback_price
+                            m10_price = fallback_price
+                            m15_price = fallback_price
+                            m60_price = fallback_price
                         
                         # Calculate High/Low for each timeframe (always calculate to prevent N/A)
-                        if crypto_data.m1 and float(crypto_data.m1) > 0:
-                            crypto_data.m1_high = Decimal(str(round(float(crypto_data.m1) * 1.001, 10)))
-                            crypto_data.m1_low = Decimal(str(round(float(crypto_data.m1) * 0.999, 10)))
-                        if crypto_data.m2 and float(crypto_data.m2) > 0:
-                            crypto_data.m2_high = Decimal(str(round(float(crypto_data.m2) * 1.002, 10)))
-                            crypto_data.m2_low = Decimal(str(round(float(crypto_data.m2) * 0.998, 10)))
-                        if crypto_data.m3 and float(crypto_data.m3) > 0:
-                            crypto_data.m3_high = Decimal(str(round(float(crypto_data.m3) * 1.003, 10)))
-                            crypto_data.m3_low = Decimal(str(round(float(crypto_data.m3) * 0.997, 10)))
-                        if crypto_data.m5 and float(crypto_data.m5) > 0:
-                            crypto_data.m5_high = Decimal(str(round(float(crypto_data.m5) * 1.005, 10)))
-                            crypto_data.m5_low = Decimal(str(round(float(crypto_data.m5) * 0.995, 10)))
-                        if crypto_data.m10 and float(crypto_data.m10) > 0:
-                            crypto_data.m10_high = Decimal(str(round(float(crypto_data.m10) * 1.01, 10)))
-                            crypto_data.m10_low = Decimal(str(round(float(crypto_data.m10) * 0.99, 10)))
-                        if crypto_data.m15 and float(crypto_data.m15) > 0:
-                            crypto_data.m15_high = Decimal(str(round(float(crypto_data.m15) * 1.015, 10)))
-                            crypto_data.m15_low = Decimal(str(round(float(crypto_data.m15) * 0.985, 10)))
-                        if crypto_data.m60 and float(crypto_data.m60) > 0:
-                            crypto_data.m60_high = Decimal(str(round(float(crypto_data.m60) * 1.06, 10)))
-                            crypto_data.m60_low = Decimal(str(round(float(crypto_data.m60) * 0.94, 10)))
+                        if m1_price > 0:
+                            crypto_data.m1_high = Decimal(str(round(m1_price * 1.001, 10)))
+                            crypto_data.m1_low = Decimal(str(round(m1_price * 0.999, 10)))
+                        if m2_price > 0:
+                            crypto_data.m2_high = Decimal(str(round(m2_price * 1.002, 10)))
+                            crypto_data.m2_low = Decimal(str(round(m2_price * 0.998, 10)))
+                        if m3_price > 0:
+                            crypto_data.m3_high = Decimal(str(round(m3_price * 1.003, 10)))
+                            crypto_data.m3_low = Decimal(str(round(m3_price * 0.997, 10)))
+                        if m5_price > 0:
+                            crypto_data.m5_high = Decimal(str(round(m5_price * 1.005, 10)))
+                            crypto_data.m5_low = Decimal(str(round(m5_price * 0.995, 10)))
+                        if m10_price > 0:
+                            crypto_data.m10_high = Decimal(str(round(m10_price * 1.01, 10)))
+                            crypto_data.m10_low = Decimal(str(round(m10_price * 0.99, 10)))
+                        if m15_price > 0:
+                            crypto_data.m15_high = Decimal(str(round(m15_price * 1.015, 10)))
+                            crypto_data.m15_low = Decimal(str(round(m15_price * 0.985, 10)))
+                        if m60_price > 0:
+                            crypto_data.m60_high = Decimal(str(round(m60_price * 1.06, 10)))
+                            crypto_data.m60_low = Decimal(str(round(m60_price * 0.94, 10)))
                         
                         # ========== CALCULATE RANGE % (High-Low percentage) ==========
                         # Range % = ((high - low) / low) * 100
@@ -1595,42 +1621,15 @@ def calculate_crypto_metrics_task(self):
                             crypto_data.m60_range_pct = Decimal('0.0000')
                         
                         # ========== CALCULATE RETURN % (R%) ==========
-                        # Return % = ((current_price - timeframe_price) / timeframe_price) * 100
-                        # Always calculate these to prevent N/A in frontend
-                        if crypto_data.m1 and float(crypto_data.m1) > 0:
-                            crypto_data.m1_r_pct = Decimal(str(round(((price - float(crypto_data.m1)) / float(crypto_data.m1)) * 100, 4)))
-                        else:
-                            crypto_data.m1_r_pct = Decimal('0.0000')
-                            
-                        if crypto_data.m2 and float(crypto_data.m2) > 0:
-                            crypto_data.m2_r_pct = Decimal(str(round(((price - float(crypto_data.m2)) / float(crypto_data.m2)) * 100, 4)))
-                        else:
-                            crypto_data.m2_r_pct = Decimal('0.0000')
-                            
-                        if crypto_data.m3 and float(crypto_data.m3) > 0:
-                            crypto_data.m3_r_pct = Decimal(str(round(((price - float(crypto_data.m3)) / float(crypto_data.m3)) * 100, 4)))
-                        else:
-                            crypto_data.m3_r_pct = Decimal('0.0000')
-                            
-                        if crypto_data.m5 and float(crypto_data.m5) > 0:
-                            crypto_data.m5_r_pct = Decimal(str(round(((price - float(crypto_data.m5)) / float(crypto_data.m5)) * 100, 4)))
-                        else:
-                            crypto_data.m5_r_pct = Decimal('0.0000')
-                            
-                        if crypto_data.m10 and float(crypto_data.m10) > 0:
-                            crypto_data.m10_r_pct = Decimal(str(round(((price - float(crypto_data.m10)) / float(crypto_data.m10)) * 100, 4)))
-                        else:
-                            crypto_data.m10_r_pct = Decimal('0.0000')
-                            
-                        if crypto_data.m15 and float(crypto_data.m15) > 0:
-                            crypto_data.m15_r_pct = Decimal(str(round(((price - float(crypto_data.m15)) / float(crypto_data.m15)) * 100, 4)))
-                        else:
-                            crypto_data.m15_r_pct = Decimal('0.0000')
-                            
-                        if crypto_data.m60 and float(crypto_data.m60) > 0:
-                            crypto_data.m60_r_pct = Decimal(str(round(((price - float(crypto_data.m60)) / float(crypto_data.m60)) * 100, 4)))
-                        else:
-                            crypto_data.m60_r_pct = Decimal('0.0000')
+                        # Return % = timeframe price change percentage
+                        # Since m1, m2, etc. now store percentages, use them directly
+                        crypto_data.m1_r_pct = crypto_data.m1 if crypto_data.m1 else Decimal('0.0000')
+                        crypto_data.m2_r_pct = crypto_data.m2 if crypto_data.m2 else Decimal('0.0000')
+                        crypto_data.m3_r_pct = crypto_data.m3 if crypto_data.m3 else Decimal('0.0000')
+                        crypto_data.m5_r_pct = crypto_data.m5 if crypto_data.m5 else Decimal('0.0000')
+                        crypto_data.m10_r_pct = crypto_data.m10 if crypto_data.m10 else Decimal('0.0000')
+                        crypto_data.m15_r_pct = crypto_data.m15 if crypto_data.m15 else Decimal('0.0000')
+                        crypto_data.m60_r_pct = crypto_data.m60 if crypto_data.m60 else Decimal('0.0000')
                         
                         # ========== CALCULATE VOLUME % ==========
                         # Volume % = (timeframe_volume / 24h_volume) * 100
