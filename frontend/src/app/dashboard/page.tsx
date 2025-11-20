@@ -1189,46 +1189,50 @@ export default function DashboardPage() {
                           )}
                         >
                           <div className="flex items-center whitespace-nowrap">
-                            <span className="cursor-pointer" onClick={() => col.key !== 'symbol' && requestSort(col.key as keyof CryptoData)}>
-                              {col.title}
-                            </span>
                             {col.key === 'symbol' ? (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="ml-2 h-6 w-6">
-                                    <Filter className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent className="w-64 p-2 z-[200]" onSelect={(e: Event) => e.preventDefault()}>
-                                  <div className="flex items-center border-b pb-2 mb-2">
-                                    <Search className="h-4 w-4 mr-2 text-gray-400" />
-                                    <Input
-                                      placeholder="Search symbols..."
-                                      value={symbolSearch}
-                                      onChange={(e) => setSymbolSearch(e.target.value)}
-                                      className="h-8 text-sm"
-                                    />
-                                  </div>
-                                  <div className="max-h-60 overflow-y-auto">
-                                    {filteredSymbols.map(symbol => (
-                                      <div key={symbol} className="flex items-center space-x-2 p-1">
-                                        <Checkbox
-                                          id={symbol}
-                                          checked={symbolFilter.includes(symbol)}
-                                          onCheckedChange={() => handleSymbolFilterChange(symbol)}
-                                        />
-                                        <label htmlFor={symbol} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                          {symbol}
-                                        </label>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                              <>
+                                <span>{col.title}</span>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="ml-2 h-6 w-6">
+                                      <Filter className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent className="w-64 p-2 z-[200]" onSelect={(e: Event) => e.preventDefault()}>
+                                    <div className="flex items-center border-b pb-2 mb-2">
+                                      <Search className="h-4 w-4 mr-2 text-gray-400" />
+                                      <Input
+                                        placeholder="Search symbols..."
+                                        value={symbolSearch}
+                                        onChange={(e) => setSymbolSearch(e.target.value)}
+                                        className="h-8 text-sm"
+                                      />
+                                    </div>
+                                    <div className="max-h-60 overflow-y-auto">
+                                      {filteredSymbols.map(symbol => (
+                                        <div key={symbol} className="flex items-center space-x-2 p-1">
+                                          <Checkbox
+                                            id={symbol}
+                                            checked={symbolFilter.includes(symbol)}
+                                            onCheckedChange={() => handleSymbolFilterChange(symbol)}
+                                          />
+                                          <label htmlFor={symbol} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                            {symbol}
+                                          </label>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </>
                             ) : (
-                              <span className="cursor-pointer" onClick={() => requestSort(col.key as keyof CryptoData)}>
+                              <button 
+                                className="flex items-center space-x-1 cursor-pointer hover:text-gray-900 transition-colors focus:outline-none w-full"
+                                onClick={() => requestSort(col.key as keyof CryptoData)}
+                              >
+                                <span>{col.title}</span>
                                 {getSortIcon(col.key as keyof CryptoData)}
-                              </span>
+                              </button>
                             )}
                           </div>
                         </TableHead>
