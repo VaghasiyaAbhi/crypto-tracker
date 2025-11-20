@@ -799,8 +799,28 @@ export default function DashboardPage() {
         filteredData.sort((a, b) => {
           const aValue = a[sortConfig.key];
           const bValue = b[sortConfig.key];
-          if (aValue === null || aValue === undefined) return 1;
-          if (bValue === null || bValue === undefined) return -1;
+          
+          // Helper function to check if value should be treated as "empty"
+          const isEmpty = (val: any) => {
+            return val === null || 
+                   val === undefined || 
+                   val === 'N/A' || 
+                   val === '' || 
+                   val === 0 ||
+                   val === 0.00;
+          };
+          
+          const aEmpty = isEmpty(aValue);
+          const bEmpty = isEmpty(bValue);
+          
+          // Both empty - maintain order
+          if (aEmpty && bEmpty) return 0;
+          // a is empty - push to end
+          if (aEmpty) return 1;
+          // b is empty - push to end
+          if (bEmpty) return -1;
+          
+          // Both have valid values - sort normally
           if (typeof aValue === 'number' && typeof bValue === 'number') {
             return sortConfig.direction === 'ascending' ? aValue - bValue : bValue - aValue;
           }
