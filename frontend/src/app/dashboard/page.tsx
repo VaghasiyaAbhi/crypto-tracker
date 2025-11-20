@@ -5,7 +5,7 @@ import { Card, CardContent } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
-import { Search, ChevronUp, ChevronDown, Loader2, ArrowDown, ArrowUp, ChevronsUpDown, RefreshCw, Filter } from 'lucide-react';
+import { Search, ChevronUp, ChevronDown, ArrowDown, ArrowUp, ChevronsUpDown, RefreshCw, Filter } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import Header from '../../components/shared/Header';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '../../components/ui/dropdown-menu';
@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import Image from 'next/image';
 import '../../styles/blink-animations.css';
 import { useInactivityLogout } from '../../lib/useInactivityLogout';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
 
 interface CryptoData {
   symbol: string;
@@ -922,8 +923,9 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
-        <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <LoadingSpinner message="Loading crypto data..." />
       </div>
     );
   }
@@ -1264,10 +1266,7 @@ export default function DashboardPage() {
                           <TableRow ref={observerTarget}>
                             <TableCell colSpan={visibleColumns.size} className="h-20 text-center">
                               {isLoadingMore ? (
-                                <div className="flex items-center justify-center space-x-2">
-                                  <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
-                                  <span className="text-gray-500">Loading more rows...</span>
-                                </div>
+                                <LoadingSpinner message="Loading more rows..." className="min-h-[80px]" />
                               ) : (
                                 <span className="text-gray-400">Scroll for more</span>
                               )}

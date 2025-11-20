@@ -117,10 +117,10 @@ const Header = () => {
             {/* Logo & Brand */}
             <div className="flex items-center gap-4">
               <Link href="/dashboard" className="flex items-center gap-3 group">
-                <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-2 rounded-xl shadow-md group-hover:shadow-lg transition-shadow">
+                <div className="bg-gray-900 p-2 rounded-xl shadow-md group-hover:shadow-lg transition-shadow">
                   <TrendingUp className="h-6 w-6 text-white" />
                 </div>
-                <span className="text-xl lg:text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                <span className="text-xl lg:text-2xl font-bold text-gray-900">
                   Volume Tracker
                 </span>
               </Link>
@@ -131,7 +131,7 @@ const Header = () => {
               <Button 
                 variant="ghost" 
                 asChild 
-                className="hover:bg-indigo-50 hover:text-indigo-700 transition-colors px-4 lg:px-6 h-10"
+                className="hover:bg-gray-100 hover:text-gray-900 transition-colors px-4 lg:px-6 h-10"
               >
                 <Link href="/dashboard" className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4" />
@@ -141,7 +141,7 @@ const Header = () => {
               <Button 
                 variant="ghost" 
                 asChild 
-                className="hover:bg-indigo-50 hover:text-indigo-700 transition-colors px-4 lg:px-6 h-10"
+                className="hover:bg-gray-100 hover:text-gray-900 transition-colors px-4 lg:px-6 h-10"
               >
                 <Link href="/alerts" className="flex items-center gap-2">
                   <Bell className="h-4 w-4" />
@@ -160,7 +160,7 @@ const Header = () => {
               {user?.subscription_plan === 'free' && (
                 <Button
                   onClick={() => router.push('/upgrade-plan')}
-                  className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold shadow-md hover:shadow-lg transition-all px-4 lg:px-6 hidden sm:flex"
+                  className="bg-gray-900 hover:bg-gray-800 text-white font-bold shadow-md hover:shadow-lg transition-all px-4 lg:px-6 hidden sm:flex"
                   size="default"
                 >
                   <Award className="h-4 w-4 mr-2" />
@@ -173,9 +173,9 @@ const Header = () => {
                 <DropdownMenuTrigger asChild>
                   <Button 
                     variant="ghost" 
-                    className="rounded-full h-10 w-10 p-0 hover:bg-indigo-50 transition-colors hidden md:flex"
+                    className="rounded-full h-10 w-10 p-0 hover:bg-gray-100 transition-colors hidden md:flex"
                   >
-                    <div className="bg-gradient-to-br from-indigo-600 to-purple-600 rounded-full h-9 w-9 flex items-center justify-center">
+                    <div className="bg-gray-900 rounded-full h-9 w-9 flex items-center justify-center">
                       <User className="h-5 w-5 text-white" />
                     </div>
                   </Button>
@@ -208,7 +208,7 @@ const Header = () => {
                   </DropdownMenuItem>
                   {!user?.is_premium_user && (
                     <DropdownMenuItem asChild>
-                      <Link href="/upgrade-plan" className="cursor-pointer text-indigo-600 font-medium">
+                      <Link href="/upgrade-plan" className="cursor-pointer text-gray-900 font-medium">
                         <Award className="h-4 w-4 mr-2" />
                         <span>Upgrade Plan</span>
                       </Link>
@@ -244,34 +244,34 @@ const Header = () => {
             <div className="px-4 py-4 space-y-3">
               <Link 
                 href="/dashboard" 
-                className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-indigo-50 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <TrendingUp className="h-5 w-5 text-indigo-600" />
+                <TrendingUp className="h-5 w-5 text-gray-900" />
                 <span className="font-medium text-gray-900">Live Data</span>
               </Link>
               <Link 
                 href="/alerts" 
-                className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-indigo-50 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <Bell className="h-5 w-5 text-indigo-600" />
+                <Bell className="h-5 w-5 text-gray-900" />
                 <span className="font-medium text-gray-900">Alerts</span>
               </Link>
               <Link 
                 href="/settings" 
-                className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-indigo-50 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <Settings className="h-5 w-5 text-indigo-600" />
+                <Settings className="h-5 w-5 text-gray-900" />
                 <span className="font-medium text-gray-900">Settings</span>
               </Link>
               <Link 
                 href="/plan-management" 
-                className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-indigo-50 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors"
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <Award className="h-5 w-5 text-indigo-600" />
+                <Award className="h-5 w-5 text-gray-900" />
                 <span className="font-medium text-gray-900">
                   {user?.subscription_plan?.charAt(0).toUpperCase() + (user?.subscription_plan?.slice(1) || '')} Plan
                 </span>
@@ -282,7 +282,7 @@ const Header = () => {
                     setMobileMenuOpen(false);
                     router.push('/upgrade-plan');
                   }}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold"
+                  className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold"
                 >
                   <Award className="h-4 w-4 mr-2" />
                   UPGRADE PLAN

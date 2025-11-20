@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Bell, Trash2, Loader2, Award, Send } from 'lucide-react';
+import { Bell, Trash2, Award, Send } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -21,6 +21,8 @@ import { Combobox } from '@/components/ui/combobox';
 import { getTelegramStatus } from '@/lib/telegram-api';
 import AlertList from '@/components/alerts/AlertList';
 import { Alert as AlertTypeFromTypes } from '@/types/alerts';
+import { cn } from '@/lib/utils';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { useInactivityLogout } from '@/lib/useInactivityLogout';
 
 const alertFormSchema = z.object({
@@ -370,19 +372,20 @@ export default function AlertsPage() {
   
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100 p-6">
-        <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <LoadingSpinner message="Loading alerts..." />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-50">
       <Header />
-      <div className="w-full max-w-5xl space-y-4 sm:space-y-6 md:space-y-8 mx-auto mt-4 px-3 sm:px-4 md:px-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 sm:pb-4 border-b border-gray-200 gap-2">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">Manage Alerts</h1>
-          <p className="text-xs sm:text-sm text-gray-600">Get notified about market changes</p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+        <div className="mb-6 lg:mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Manage Alerts</h1>
+          <p className="text-gray-600">Get notified about market changes</p>
         </div>
         
         <Tabs defaultValue="alerts" className="w-full">
