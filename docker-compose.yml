@@ -106,10 +106,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'celery.*beat' || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      interval: 60s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
 
   # Binance Data Worker - Fetches real crypto data from Binance API - Optimized for WebSocket
   data-worker:
@@ -145,10 +145,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'start_websocket' || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+      interval: 60s
+      timeout: 15s
+      retries: 5
+      start_period: 90s
 
   # Single Calculation Worker for metrics processing - Optimized for 80s interval
   calc-worker:
@@ -204,11 +204,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "80"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      test: ["CMD-SHELL", "pgrep nginx || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
   # Frontend - PRODUCTION BUILD (Fast & Optimized) - Optimized for 20 concurrent users
   # Built locally to avoid macOS Docker SIGBUS, then copied into container
