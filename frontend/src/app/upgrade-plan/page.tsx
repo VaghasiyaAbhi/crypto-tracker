@@ -340,7 +340,7 @@ function UpgradePlanContent() {
                 </div>
 
                 {/* Information Section */}
-                <Card className="border-blue-200 bg-blue-50/50">
+                {/* <Card className="border-blue-200 bg-blue-50/50">
                     <CardContent className="p-6">
                         <div className="flex items-start gap-4">
                             <div className="p-3 bg-blue-100 rounded-lg">
@@ -369,7 +369,7 @@ function UpgradePlanContent() {
                             </div>
                         </div>
                     </CardContent>
-                </Card>
+                </Card> */}
 
                 {/* Back to Dashboard Button */}
                 <div className="mt-8 text-center">
