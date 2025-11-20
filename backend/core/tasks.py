@@ -1299,6 +1299,68 @@ def realtime_binance_websocket_task(self):
         logger.error(f"❌ WebSocket task failed: {exc}")
         raise exc
 
+def fetch_historical_klines(symbol: str, interval: str = '1m', limit: int = 60) -> Dict[str, float]:
+    """
+    Fetch REAL historical candlestick data from Binance klines API
+    Includes caching to avoid rate limits (Binance: 1200 req/min, 10 req/sec per IP)
+    
+    Args:
+        symbol: Trading pair symbol (e.g., 'BTCUSDT')
+        interval: Candlestick interval ('1m', '5m', '15m', '1h')
+        limit: Number of candles to fetch (default 60 for 1-hour data)
+    
+    Returns:
+        Dict with historical prices: {
+            '1m_ago': price, '2m_ago': price, '5m_ago': price,
+            '10m_ago': price, '15m_ago': price, '60m_ago': price
+        }
+    """
+    try:
+        # Check cache first (cache for 30 seconds to avoid excessive API calls)
+        cache_key = f'klines_{symbol}_{interval}_{limit}'
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return cached_data
+        
+        # Fetch 60 minutes of 1-minute candles
+        url = f'https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}'
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        
+        klines = response.json()
+        
+        if not klines or len(klines) < 2:
+            return {}
+        
+        # Kline format: [openTime, open, high, low, close, volume, closeTime, ...]
+        # We want the closing prices at specific time intervals
+        historical_prices = {}
+        
+        # Get prices from N minutes ago (counting backwards from most recent)
+        if len(klines) >= 2:
+            historical_prices['1m_ago'] = float(klines[-2][4])  # 1 minute ago close price
+        if len(klines) >= 3:
+            historical_prices['2m_ago'] = float(klines[-3][4])  # 2 minutes ago
+        if len(klines) >= 4:
+            historical_prices['3m_ago'] = float(klines[-4][4])  # 3 minutes ago
+        if len(klines) >= 6:
+            historical_prices['5m_ago'] = float(klines[-6][4])  # 5 minutes ago
+        if len(klines) >= 11:
+            historical_prices['10m_ago'] = float(klines[-11][4])  # 10 minutes ago
+        if len(klines) >= 16:
+            historical_prices['15m_ago'] = float(klines[-16][4])  # 15 minutes ago
+        if len(klines) >= 61:
+            historical_prices['60m_ago'] = float(klines[-61][4])  # 60 minutes ago (1 hour)
+        
+        # Cache for 30 seconds
+        cache.set(cache_key, historical_prices, 30)
+        
+        return historical_prices
+        
+    except Exception as e:
+        logger.warning(f"Failed to fetch klines for {symbol}: {e}")
+        return {}
+
 @shared_task(bind=True)
 def update_binance_chunk_task(self, data_chunk: List[Dict]):
     """
@@ -1501,23 +1563,80 @@ def calculate_crypto_metrics_task(self):
                             crypto_data.rsi_5m = Decimal(str(round(base_rsi + np.random.uniform(-2, 2), 2)))
                             crypto_data.rsi_15m = Decimal(str(round(base_rsi + np.random.uniform(-1, 1), 2)))
                         
-                        # ========== CALCULATE TIMEFRAME PRICE CHANGES (using 24h data as baseline) ==========
-                        # Since we don't have real historical candlestick data, we derive estimates from 24h stats
-                        # IMPORTANT: These are ESTIMATES based on 24h price movement, not actual historical prices
-                        # For real trading decisions, users should verify with exchange charts
-                        if high_24h > low_24h and price > 0 and crypto_data.price_change_percent_24h:
-                            # Use 24h price change as a baseline
+                        # ========== CALCULATE TIMEFRAME PRICE CHANGES ==========
+                        # Try to fetch REAL historical data from Binance klines API
+                        # Falls back to estimates if API fails or rate limited
+                        historical_prices = fetch_historical_klines(crypto_data.symbol, '1m', 65)
+                        
+                        if historical_prices and len(historical_prices) >= 3:
+                            # ✅ USING REAL HISTORICAL DATA from Binance klines API
+                            # Calculate actual percentage changes from real historical prices
+                            current_price = price
+                            
+                            # 1-minute change (real)
+                            if '1m_ago' in historical_prices:
+                                crypto_data.m1 = Decimal(str(round(((current_price - historical_prices['1m_ago']) / historical_prices['1m_ago']) * 100, 4)))
+                            else:
+                                crypto_data.m1 = Decimal('0.0000')
+                            
+                            # 2-minute change (real)
+                            if '2m_ago' in historical_prices:
+                                crypto_data.m2 = Decimal(str(round(((current_price - historical_prices['2m_ago']) / historical_prices['2m_ago']) * 100, 4)))
+                            else:
+                                crypto_data.m2 = Decimal('0.0000')
+                            
+                            # 3-minute change (real)
+                            if '3m_ago' in historical_prices:
+                                crypto_data.m3 = Decimal(str(round(((current_price - historical_prices['3m_ago']) / historical_prices['3m_ago']) * 100, 4)))
+                            else:
+                                crypto_data.m3 = Decimal('0.0000')
+                            
+                            # 5-minute change (real)
+                            if '5m_ago' in historical_prices:
+                                crypto_data.m5 = Decimal(str(round(((current_price - historical_prices['5m_ago']) / historical_prices['5m_ago']) * 100, 4)))
+                            else:
+                                crypto_data.m5 = Decimal('0.0000')
+                            
+                            # 10-minute change (real)
+                            if '10m_ago' in historical_prices:
+                                crypto_data.m10 = Decimal(str(round(((current_price - historical_prices['10m_ago']) / historical_prices['10m_ago']) * 100, 4)))
+                            else:
+                                crypto_data.m10 = Decimal('0.0000')
+                            
+                            # 15-minute change (real)
+                            if '15m_ago' in historical_prices:
+                                crypto_data.m15 = Decimal(str(round(((current_price - historical_prices['15m_ago']) / historical_prices['15m_ago']) * 100, 4)))
+                            else:
+                                crypto_data.m15 = Decimal('0.0000')
+                            
+                            # 60-minute change (real)
+                            if '60m_ago' in historical_prices:
+                                crypto_data.m60 = Decimal(str(round(((current_price - historical_prices['60m_ago']) / historical_prices['60m_ago']) * 100, 4)))
+                            else:
+                                crypto_data.m60 = Decimal('0.0000')
+                            
+                            # Use real historical prices for high/low calculations
+                            m1_price = historical_prices.get('1m_ago', price)
+                            m2_price = historical_prices.get('2m_ago', price)
+                            m3_price = historical_prices.get('3m_ago', price)
+                            m5_price = historical_prices.get('5m_ago', price)
+                            m10_price = historical_prices.get('10m_ago', price)
+                            m15_price = historical_prices.get('15m_ago', price)
+                            m60_price = historical_prices.get('60m_ago', price)
+                            
+                        elif high_24h > low_24h and price > 0 and crypto_data.price_change_percent_24h:
+                            # ⚠️ FALLBACK: Estimate from 24h data if klines API unavailable
+                            # This happens during rate limiting or API errors
                             change_24h = float(crypto_data.price_change_percent_24h)
                             
                             # Estimate shorter timeframe changes as fractions of 24h change
-                            # This is a simplified model assuming proportional movement
-                            crypto_data.m1 = Decimal(str(round(change_24h * (1/1440) * np.random.uniform(0.5, 1.5), 4)))  # ~0.07% of 24h
-                            crypto_data.m2 = Decimal(str(round(change_24h * (2/1440) * np.random.uniform(0.5, 1.5), 4)))  # ~0.14% of 24h  
-                            crypto_data.m3 = Decimal(str(round(change_24h * (3/1440) * np.random.uniform(0.5, 1.5), 4)))  # ~0.21% of 24h
-                            crypto_data.m5 = Decimal(str(round(change_24h * (5/1440) * np.random.uniform(0.5, 1.5), 4)))  # ~0.35% of 24h
-                            crypto_data.m10 = Decimal(str(round(change_24h * (10/1440) * np.random.uniform(0.5, 1.5), 4)))  # ~0.69% of 24h
-                            crypto_data.m15 = Decimal(str(round(change_24h * (15/1440) * np.random.uniform(0.5, 1.5), 4)))  # ~1.04% of 24h
-                            crypto_data.m60 = Decimal(str(round(change_24h * (60/1440) * np.random.uniform(0.5, 1.5), 4)))  # ~4.17% of 24h
+                            crypto_data.m1 = Decimal(str(round(change_24h * (1/1440) * np.random.uniform(0.5, 1.5), 4)))
+                            crypto_data.m2 = Decimal(str(round(change_24h * (2/1440) * np.random.uniform(0.5, 1.5), 4)))
+                            crypto_data.m3 = Decimal(str(round(change_24h * (3/1440) * np.random.uniform(0.5, 1.5), 4)))
+                            crypto_data.m5 = Decimal(str(round(change_24h * (5/1440) * np.random.uniform(0.5, 1.5), 4)))
+                            crypto_data.m10 = Decimal(str(round(change_24h * (10/1440) * np.random.uniform(0.5, 1.5), 4)))
+                            crypto_data.m15 = Decimal(str(round(change_24h * (15/1440) * np.random.uniform(0.5, 1.5), 4)))
+                            crypto_data.m60 = Decimal(str(round(change_24h * (60/1440) * np.random.uniform(0.5, 1.5), 4)))
                             
                             # Calculate corresponding prices for high/low calculations
                             m1_price = price * (1 + float(crypto_data.m1) / 100)
