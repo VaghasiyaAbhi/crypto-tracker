@@ -139,7 +139,7 @@ export default function AlertList({ alerts, loading, onRefresh }: AlertListProps
   }
 
   return (
-    <Card className="border-2 border-gray-900">
+    <Card className="border border-gray-200 rounded-xl shadow-sm">
       <CardHeader className="border-b border-gray-200 bg-gray-50">
         <div className="flex items-center justify-between">
           <CardTitle className="text-xl font-bold text-gray-900">
@@ -173,10 +173,10 @@ export default function AlertList({ alerts, loading, onRefresh }: AlertListProps
               return (
                 <div
                   key={alert.id}
-                  className={`p-5 rounded-lg border-2 transition-all ${
+                  className={`p-5 rounded-xl border transition-all ${
                     alert.is_active
-                      ? 'border-gray-900 bg-white shadow-sm'
-                      : 'border-gray-300 bg-gray-50'
+                      ? 'border-gray-300 bg-white shadow-sm'
+                      : 'border-gray-200 bg-gray-50'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -250,7 +250,7 @@ export default function AlertList({ alerts, loading, onRefresh }: AlertListProps
                           handleEditAlert(alert);
                         }}
                         title="Edit alert"
-                        className="h-9 w-9 p-0 border-2 border-gray-900 hover:bg-gray-900 hover:text-white transition-colors"
+                        className="h-9 w-9 p-0 border border-gray-200 rounded-xl shadow-sm hover:bg-gray-900 hover:text-white transition-colors"
                       >
                         <Settings className="h-4 w-4" />
                       </Button>

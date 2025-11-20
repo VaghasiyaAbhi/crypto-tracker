@@ -524,31 +524,6 @@ export default function AlertsPage() {
                           )}
                         />
                       </div>
-
-                      <FormField
-                        control={alertForm.control}
-                        name="any_coin"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-row items-start justify-between rounded-lg border p-3 sm:p-4 bg-blue-50 border-blue-200">
-                            <div className="space-y-0.5 flex-1 pr-2">
-                              <FormLabel className="text-sm sm:text-base font-semibold text-blue-900">
-                                Apply to Top 100 Coins
-                              </FormLabel>
-                              <FormDescription className="text-xs sm:text-sm text-blue-700">
-                                This alert will check the <strong>top 100 coins by volume</strong> only (optimized for performance). Leave unchecked to monitor a specific coin.
-                              </FormDescription>
-                            </div>
-                            <FormControl>
-                              <Switch
-                                id="any-coin-switch"
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                                className="mt-1"
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
                       
                       <FormField
                         control={alertForm.control}

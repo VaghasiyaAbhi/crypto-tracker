@@ -157,8 +157,8 @@ export default function EditAlertDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto bg-white border-2 border-gray-900">
-        <DialogHeader className="border-b border-gray-200 pb-4">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg">
+        <DialogHeader className="border-b border-gray-100 pb-4">
           <DialogTitle className="text-2xl font-bold text-gray-900">
             Edit Alert
           </DialogTitle>
@@ -190,7 +190,7 @@ export default function EditAlertDialog({
                 value={coinSymbol}
                 onChange={(e) => setCoinSymbol(e.target.value.toUpperCase())}
                 required
-                className="h-11 border-gray-300 focus:border-gray-900 focus:ring-gray-900 font-mono"
+                className="h-11 border-gray-200 focus:border-gray-400 focus:ring-gray-400 rounded-lg font-mono"
               />
               <p className="text-xs text-gray-500">
                 Enter the trading pair symbol (e.g., BTCUSDT, ETHUSDT)
@@ -203,10 +203,10 @@ export default function EditAlertDialog({
                 Alert Type
               </Label>
               <Select value={alertType} onValueChange={setAlertType} required>
-                <SelectTrigger className="h-11 border-gray-300 focus:border-gray-900 focus:ring-gray-900">
+                <SelectTrigger className="h-11 border-gray-200 focus:border-gray-400 focus:ring-gray-400 rounded-lg">
                   <SelectValue placeholder="Select alert type" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border-2 border-gray-900">
+                <SelectContent className="bg-white border border-gray-200 rounded-xl">
                   <SelectItem value="pump_alert" className="cursor-pointer focus:bg-gray-100">
                     <span className="font-medium">Pump Alert</span>
                   </SelectItem>
@@ -243,7 +243,7 @@ export default function EditAlertDialog({
                   value={conditionValue}
                   onChange={(e) => setConditionValue(e.target.value)}
                   required
-                  className="h-11 pr-10 border-gray-300 focus:border-gray-900 focus:ring-gray-900 font-mono"
+                  className="h-11 pr-10 border-gray-200 focus:border-gray-400 focus:ring-gray-400 rounded-lg font-mono"
                 />
                 {!alertType?.includes('rsi') && (
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
@@ -259,10 +259,10 @@ export default function EditAlertDialog({
                 Timeframe
               </Label>
               <Select value={timePeriod} onValueChange={setTimePeriod} required>
-                <SelectTrigger className="h-11 border-gray-300 focus:border-gray-900 focus:ring-gray-900">
+                <SelectTrigger className="h-11 border-gray-200 focus:border-gray-400 focus:ring-gray-400 rounded-lg">
                   <SelectValue placeholder="Select timeframe" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border-2 border-gray-900">
+                <SelectContent className="bg-white border border-gray-200 rounded-xl">
                   <SelectItem value="1m" className="cursor-pointer focus:bg-gray-100">
                     <span className="font-medium">1 Minute</span>
                   </SelectItem>
@@ -292,10 +292,10 @@ export default function EditAlertDialog({
                 onValueChange={setNotificationChannels}
                 required
               >
-                <SelectTrigger className="h-11 border-gray-300 focus:border-gray-900 focus:ring-gray-900">
+                <SelectTrigger className="h-11 border-gray-200 focus:border-gray-400 focus:ring-gray-400 rounded-lg">
                   <SelectValue placeholder="Select notification method" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border-2 border-gray-900">
+                <SelectContent className="bg-white border border-gray-200 rounded-xl">
                   <SelectItem value="email" className="cursor-pointer focus:bg-gray-100">
                     <span className="font-medium">Email</span>
                   </SelectItem>
@@ -316,7 +316,7 @@ export default function EditAlertDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={loading}
-              className="flex-1 sm:flex-none h-11 border-2 border-gray-300 hover:bg-gray-100 font-semibold"
+              className="flex-1 sm:flex-none h-11 border border-gray-200 rounded-lg hover:bg-gray-100 font-semibold"
             >
               Cancel
             </Button>

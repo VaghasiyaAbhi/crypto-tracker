@@ -217,7 +217,7 @@ export default function CreateAlertForm({ telegramConnected, onAlertCreated }: C
                     key={type}
                     type="button"
                     onClick={() => setAlertType(type)}
-                    className={`p-4 rounded-lg border-2 transition-all ${
+                    className={`p-4 rounded-lg border transition-all ${
                       alertType === type
                         ? 'border-indigo-600 bg-indigo-50'
                         : 'border-gray-200 hover:border-gray-300'
