@@ -67,3 +67,14 @@ app.conf.beat_schedule = {
 }
 
 app.conf.timezone = 'UTC'
+
+# Task routing configuration - prevent multiple workers from polling Telegram
+# Only celery-worker (not calc-worker) should handle Telegram tasks
+app.conf.task_routes = {
+    'core.tasks.poll_telegram_updates_task': {'queue': 'celery'},
+    'core.tasks.send_telegram_alert_task': {'queue': 'celery'},
+}
+
+# Ensure only one instance of telegram polling runs at a time
+app.conf.task_default_queue = 'celery'
+app.conf.task_create_missing_queues = True

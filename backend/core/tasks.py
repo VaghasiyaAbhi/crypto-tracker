@@ -572,7 +572,21 @@ def poll_telegram_updates_task(self):
     """
     Poll Telegram API for new messages/updates
     Runs periodically via Celery beat
+    Uses distributed lock to prevent concurrent polling from multiple workers
     """
+    from django.core.cache import cache
+    
+    # Try to acquire a distributed lock (prevents multiple workers from polling simultaneously)
+    lock_key = 'telegram_polling_lock'
+    lock_timeout = 8  # 8 seconds (less than 10s polling interval)
+    
+    # Try to set lock atomically
+    lock_acquired = cache.add(lock_key, 'locked', lock_timeout)
+    
+    if not lock_acquired:
+        logger.debug("Telegram polling already in progress by another worker - skipping")
+        return "Skipped - already polling"
+    
     try:
         from .telegram_bot import telegram_bot
         
@@ -622,6 +636,9 @@ def poll_telegram_updates_task(self):
     except Exception as exc:
         logger.error(f"Failed to poll Telegram updates: {exc}")
         return f"Error: {str(exc)}"
+    finally:
+        # Always release the lock
+        cache.delete(lock_key)
 
 @shared_task(bind=True)
 def process_price_alerts_task(self):
