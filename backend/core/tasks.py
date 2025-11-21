@@ -1490,46 +1490,6 @@ def send_activation_email_task(self, email: str, first_name: str, token: str):
                         raise self.retry(countdown=60, exc=exc)
                 raise exc
 
-@shared_task(bind=True, max_retries=3)
-def send_login_token_email_task(self, email: str, first_name: str, token: str):
-        """
-        Async task to send login token email (HTML themed)
-        """
-        try:
-                brand = {'name': 'Volume Tracker', 'color': '#10b981'}
-                subject = 'Your secure login link'
-                frontend_base = (getattr(settings,'FRONTEND_URL',None) or os.environ.get('FRONTEND_URL') or 'http://localhost:3000').rstrip('/')
-                login_url = f"{frontend_base}/login/{token}"
-                message = (
-                        f"Hi {first_name},\n\nUse the secure link below to log in:\n{login_url}\n\nThis link expires in 15 minutes.\n\n— The {brand['name']} Team"
-                )
-                html_message = f"""
-<!DOCTYPE html>
-<html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></head>
-<body style=\"margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial\"> 
-    <table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f3f4f6;padding:24px 0;\"><tr><td align=\"center\">
-        <table width=\"600\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08);\">
-            <tr><td style=\"background:linear-gradient(135deg,{brand['color']} 0%,#34d399 100%);padding:28px 32px;text-align:center;\"><h1 style=\"margin:0;color:#fff;font-size:24px;\">Log in to your account</h1></td></tr>
-            <tr><td style=\"padding:32px;\"><p style=\"margin:0 0 12px;color:#111827;font-size:16px;\">Hi <strong>{first_name}</strong>,</p><p style=\"margin:0 0 16px;color:#374151;font-size:15px;line-height:1.6;\">Use the button below to securely sign in. This link expires in <strong>15 minutes</strong>.</p>
-                <table width=\"100%\" style=\"margin:28px 0;\"><tr><td align=\"center\"><a href=\"{login_url}\" style=\"display:inline-block;padding:14px 28px;background:{brand['color']};color:#fff;text-decoration:none;border-radius:8px;font-weight:600;\">Log In</a></td></tr></table>
-                <p style=\"margin:0;color:#6b7280;font-size:13px;\">Or paste this link in your browser:</p>
-                <p style=\"margin:6px 0 0;color:#2563eb;font-size:13px;word-break:break-all;\">{login_url}</p>
-            </td></tr>
-            <tr><td style=\"background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 32px;text-align:center;\"><p style=\"margin:0;color:#6b7280;font-size:12px;\">You received this email because a login was requested for your {brand['name']} account.</p></td></tr>
-        </table>
-    </td></tr></table>
-</body></html>
-"""
-                from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or getattr(settings, 'EMAIL_HOST_USER', None)
-                send_mail(subject, message, from_email, [email], html_message=html_message, fail_silently=False)
-                logger.info(f"Login token email sent to {email}")
-                return f"Login email sent to {email}"
-        except Exception as exc:
-                logger.error(f"Failed to send login token email to {email}: {exc}")
-                if self.request.retries < self.max_retries:
-                        raise self.retry(countdown=60, exc=exc)
-                raise exc
-
 @shared_task(bind=True)
 def calculate_crypto_metrics_task(self):
     """
