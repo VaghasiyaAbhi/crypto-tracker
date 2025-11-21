@@ -160,7 +160,7 @@ def send_login_token_email_task(self, email: str, first_name: str, token: str):
 
                 subject = 'Your secure login link'
                 frontend_base = (getattr(settings, 'FRONTEND_URL', None) or os.environ.get('FRONTEND_URL') or 'http://localhost:3000').rstrip('/')
-                login_url = f"{frontend_base}?token={token}"
+                login_url = f"{frontend_base}/login/{token}"
 
                 # Plain text fallback
                 message = (
