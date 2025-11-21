@@ -86,7 +86,8 @@ class RequestLoginTokenView(APIView):
                 login_token = str(uuid.uuid4())
                 user.login_token = login_token
                 user.save()
-                send_login_token_email_task.delay(email, user.first_name, login_token)
+                # Send email synchronously to avoid Celery worker queue delays
+                send_login_token_email_task.apply(args=(email, user.first_name, login_token))
                 return Response({'message': 'A login link has been sent to your email.'}, status=status.HTTP_200_OK)
             except User.DoesNotExist:
                 return Response({'error': 'User with this email does not exist.'}, status=status.HTTP_404_NOT_FOUND)
