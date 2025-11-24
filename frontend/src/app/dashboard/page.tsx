@@ -592,7 +592,10 @@ export default function DashboardPage() {
           if (msg?.type === 'delta') {
             const updatedBatch: CryptoData[] = Array.isArray(msg.data) ? msg.data : [];
             updatedBatch.forEach(newItem => {
-              dataBatchRef.current.set(newItem.symbol, newItem);
+              // ✨ FILTER: Only batch updates for symbols matching current currency
+              if (newItem.symbol.endsWith(baseCurrency)) {
+                dataBatchRef.current.set(newItem.symbol, newItem);
+              }
             });
             return;
           }
@@ -600,7 +603,10 @@ export default function DashboardPage() {
           // Backward compatibility: raw array
           if (Array.isArray(msg)) {
             msg.forEach((item: CryptoData) => {
-              dataBatchRef.current.set(item.symbol, item);
+              // ✨ FILTER: Only batch updates for symbols matching current currency
+              if (item.symbol.endsWith(baseCurrency)) {
+                dataBatchRef.current.set(item.symbol, item);
+              }
             });
           }
         } catch (e: unknown) {
@@ -701,6 +707,12 @@ export default function DashboardPage() {
               const oldItemsForChanges: CryptoData[] = [];
 
               dataBatchRef.current.forEach(newItem => {
+                // ✨ SAFETY CHECK: Only apply updates for current currency
+                if (!newItem.symbol.endsWith(baseCurrency)) {
+                  console.log('⚠️ Skipping delta update for', newItem.symbol, '(current currency:', baseCurrency, ')');
+                  return;
+                }
+                
                 const oldItem = dataMap.get(newItem.symbol);
                 if (oldItem) {
                   oldItemsForChanges.push(oldItem);
