@@ -573,6 +573,17 @@ export default function DashboardPage() {
           // Snapshot streaming
           if (msg?.type === 'snapshot') {
             const items: CryptoData[] = Array.isArray(msg.data) ? msg.data : [];
+            
+            // 🔍 DEBUG: Log snapshot details
+            console.log('📸 Snapshot received:', {
+              chunk: msg.chunk,
+              totalChunks: msg.total_chunks,
+              itemCount: items.length,
+              quoteCurrency: msg.quote_currency,
+              currentBaseCurrency: baseCurrencyRef.current,
+              firstSymbols: items.slice(0, 5).map(i => i.symbol)
+            });
+            
             if (!snapshotAccumRef.current) {
               snapshotAccumRef.current = { chunks: msg.total_chunks || 1, total: msg.total_count || 0, buffer: new Map() };
             }
@@ -581,6 +592,7 @@ export default function DashboardPage() {
             // When last chunk arrives, commit
             if (msg.chunk >= (snapshotAccumRef.current.chunks || 1)) {
               const merged = Array.from(snapshotAccumRef.current.buffer.values());
+              console.log('✅ Snapshot complete - Total symbols:', merged.length, 'First 5:', merged.slice(0, 5).map(i => i.symbol));
               snapshotAccumRef.current = null;
               setCryptoData(merged);
               setIsRefreshing(false);
@@ -592,12 +604,24 @@ export default function DashboardPage() {
           // Delta updates - batch them for 10-second cycles
           if (msg?.type === 'delta') {
             const updatedBatch: CryptoData[] = Array.isArray(msg.data) ? msg.data : [];
+            console.log('📊 Delta updates received:', {
+              count: updatedBatch.length,
+              currentCurrency: baseCurrencyRef.current,
+              sampleSymbols: updatedBatch.slice(0, 3).map(i => i.symbol)
+            });
+            
+            let accepted = 0, rejected = 0;
             updatedBatch.forEach(newItem => {
               // ✨ FILTER: Only batch updates for symbols matching current currency (use ref!)
               if (newItem.symbol.endsWith(baseCurrencyRef.current)) {
                 dataBatchRef.current.set(newItem.symbol, newItem);
+                accepted++;
+              } else {
+                rejected++;
+                if (rejected <= 3) console.log('⚠️ Rejected delta:', newItem.symbol, '(want', baseCurrencyRef.current + ')');
               }
             });
+            console.log(`📦 Delta filtering: ${accepted} accepted, ${rejected} rejected`);
             return;
           }
           
@@ -671,7 +695,7 @@ export default function DashboardPage() {
         
         // When countdown reaches 0, trigger update and reset
         if (nextValue <= 0) {
-          console.log('⏰ Countdown reached 0 - isPremium:', isPremium, 'WebSocket OPEN:', socketRef.current?.readyState === WebSocket.OPEN);
+          console.log('⏰ Countdown reached 0 - isPremium:', isPremium, 'WebSocket OPEN:', socketRef.current?.readyState === WebSocket.OPEN, 'Current currency:', baseCurrencyRef.current);
           
           // Update last update time
           setLastUpdateTime(new Date().toLocaleTimeString());
