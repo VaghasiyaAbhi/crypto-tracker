@@ -679,13 +679,13 @@ export default function DashboardPage() {
           // ONLY premium users get automatic data refresh
           if (isPremium && socketRef.current?.readyState === WebSocket.OPEN) {
             const pageSize = itemCount === 'All' ? 500 : Math.min(parseInt(itemCount), 100);
-            console.log('🚀 Sending refresh request - pageSize:', pageSize);
+            console.log('🚀 Sending refresh request - pageSize:', pageSize, 'currency:', baseCurrencyRef.current);
             socketRef.current.send(JSON.stringify({
               type: 'request_snapshot',
               sort_by: 'profit',
               sort_order: 'desc',
               page_size: pageSize,
-              quote_currency: baseCurrency
+              quote_currency: baseCurrencyRef.current // ✨ Use ref instead of closure variable!
             }));
           } else {
             if (!isPremium) {
