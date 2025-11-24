@@ -736,6 +736,15 @@ export default function DashboardPage() {
   useEffect(() => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       console.log('💱 Currency changed to:', baseCurrency, '- requesting new data');
+      
+      // CLEAR OLD DATA IMMEDIATELY when currency changes
+      setCryptoData([]);
+      setLoading(true); // Show loading state while fetching new currency data
+      
+      // Clear any accumulated snapshot data
+      snapshotAccumRef.current = null;
+      dataBatchRef.current.clear();
+      
       const pageSize = itemCount === 'All' ? 500 : Math.min(parseInt(itemCount), 100);
       socketRef.current.send(JSON.stringify({
         type: 'request_snapshot',
