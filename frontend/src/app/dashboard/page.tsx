@@ -771,6 +771,9 @@ export default function DashboardPage() {
 
   // Refresh data when currency changes
   useEffect(() => {
+    console.log('🔄 Currency change effect triggered - NEW VALUE:', baseCurrency);
+    console.log('🔄 Updating baseCurrencyRef.current from', baseCurrencyRef.current, 'to', baseCurrency);
+    
     // ✨ Update ref so WebSocket handler always has latest currency
     baseCurrencyRef.current = baseCurrency;
     
@@ -1087,7 +1090,13 @@ export default function DashboardPage() {
           <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 lg:mb-8 gap-4">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 flex-wrap">
               {/* Currency Selector - First (Most Important) */}
-              <Select onValueChange={setBaseCurrency} value={baseCurrency}>
+              <Select 
+                onValueChange={(value: string) => {
+                  console.log('🎯 Currency dropdown changed - User selected:', value);
+                  setBaseCurrency(value);
+                }} 
+                value={baseCurrency}
+              >
                 <SelectTrigger className="w-full sm:w-[180px] bg-white font-semibold">
                   <SelectValue placeholder="Select Currency" />
                 </SelectTrigger>
