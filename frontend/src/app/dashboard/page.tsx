@@ -156,6 +156,7 @@ export default function DashboardPage() {
   const [isWebSocketReady, setIsWebSocketReady] = useState<boolean>(false); // Track WebSocket connection status
   const socketRef = useRef<WebSocket | null>(null);
   const dataBatchRef = useRef<Map<string, CryptoData>>(new Map());
+  const baseCurrencyRef = useRef<string>(baseCurrency); // ✨ Ref to track current currency for WebSocket handler
   const snapshotAccumRef = useRef<{ chunks: number; total: number; buffer: Map<string, CryptoData> } | null>(null);
   const isMountedRef = useRef<boolean>(true); // Track if component is mounted
   
@@ -592,8 +593,8 @@ export default function DashboardPage() {
           if (msg?.type === 'delta') {
             const updatedBatch: CryptoData[] = Array.isArray(msg.data) ? msg.data : [];
             updatedBatch.forEach(newItem => {
-              // ✨ FILTER: Only batch updates for symbols matching current currency
-              if (newItem.symbol.endsWith(baseCurrency)) {
+              // ✨ FILTER: Only batch updates for symbols matching current currency (use ref!)
+              if (newItem.symbol.endsWith(baseCurrencyRef.current)) {
                 dataBatchRef.current.set(newItem.symbol, newItem);
               }
             });
@@ -603,8 +604,8 @@ export default function DashboardPage() {
           // Backward compatibility: raw array
           if (Array.isArray(msg)) {
             msg.forEach((item: CryptoData) => {
-              // ✨ FILTER: Only batch updates for symbols matching current currency
-              if (item.symbol.endsWith(baseCurrency)) {
+              // ✨ FILTER: Only batch updates for symbols matching current currency (use ref!)
+              if (item.symbol.endsWith(baseCurrencyRef.current)) {
                 dataBatchRef.current.set(item.symbol, item);
               }
             });
@@ -707,9 +708,9 @@ export default function DashboardPage() {
               const oldItemsForChanges: CryptoData[] = [];
 
               dataBatchRef.current.forEach(newItem => {
-                // ✨ SAFETY CHECK: Only apply updates for current currency
-                if (!newItem.symbol.endsWith(baseCurrency)) {
-                  console.log('⚠️ Skipping delta update for', newItem.symbol, '(current currency:', baseCurrency, ')');
+                // ✨ SAFETY CHECK: Only apply updates for current currency (use ref!)
+                if (!newItem.symbol.endsWith(baseCurrencyRef.current)) {
+                  console.log('⚠️ Skipping delta update for', newItem.symbol, '(current currency:', baseCurrencyRef.current, ')');
                   return;
                 }
                 
@@ -746,6 +747,9 @@ export default function DashboardPage() {
 
   // Refresh data when currency changes
   useEffect(() => {
+    // ✨ Update ref so WebSocket handler always has latest currency
+    baseCurrencyRef.current = baseCurrency;
+    
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       console.log('💱 Currency changed to:', baseCurrency, '- requesting new data');
       
