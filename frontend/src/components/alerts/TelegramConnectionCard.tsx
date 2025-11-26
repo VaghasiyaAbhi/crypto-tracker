@@ -240,7 +240,7 @@ export default function TelegramConnectionCard({ onConnectionChange }: TelegramC
               Connected
             </Badge>
           ) : (
-            <Badge variant="secondary" className="bg-gray-100 text-gray-800">
+            <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">
               <X className="h-3 w-3 mr-1" />
               Not Connected
             </Badge>
