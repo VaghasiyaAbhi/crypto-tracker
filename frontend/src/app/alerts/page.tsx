@@ -26,7 +26,7 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { useInactivityLogout } from '@/lib/useInactivityLogout';
 
 const alertFormSchema = z.object({
-  alert_type: z.enum(["price_movement", "volume_change", "new_coin_listing", "rsi_overbought", "rsi_oversold", "pump_alert", "dump_alert"]),
+  alert_type: z.enum(["price_movement", "volume_change", "new_coin_listing", "rsi_overbought", "rsi_oversold", "pump_alert", "dump_alert", "top_100"]),
   coin_symbol: z.string().optional(),
   condition_value: z.number().optional(),
   time_period: z.string().optional(),
@@ -36,7 +36,7 @@ const alertFormSchema = z.object({
 
 interface Alert {
   id: number;
-  alert_type: 'price_movement' | 'volume_change' | 'new_coin_listing' | 'rsi_overbought' | 'rsi_oversold' | 'pump_alert' | 'dump_alert';
+  alert_type: 'price_movement' | 'volume_change' | 'new_coin_listing' | 'rsi_overbought' | 'rsi_oversold' | 'pump_alert' | 'dump_alert' | 'top_100';
   coin_symbol: string | null;
   condition_value: number | null;
   time_period: string | null;
@@ -80,6 +80,9 @@ export default function AlertsPage() {
       notifications: ['email'],
     },
   });
+
+  // Watch alert_type to conditionally show/hide coin symbol field
+  const selectedAlertType = alertForm.watch('alert_type');
 
   const handleTelegramConnectionChange = (connected: boolean) => {
     setTelegramConnected(connected);
@@ -207,8 +210,12 @@ export default function AlertsPage() {
         notificationChannels = notifications[0];
       }
       
+      // For top_100 alerts, set coin_symbol to 'TOP100'
+      const finalCoinSymbol = data.alert_type === 'top_100' ? 'TOP100' : alertData.coin_symbol;
+      
       const payload = {
         ...alertData,
+        coin_symbol: finalCoinSymbol,
         notification_channels: notificationChannels,
       };
 
@@ -446,6 +453,7 @@ export default function AlertsPage() {
                                   <SelectItem value="rsi_oversold">RSI Oversold (&lt;30)</SelectItem>
                                   <SelectItem value="pump_alert">Pump Alert (&gt;5% in 1m)</SelectItem>
                                   <SelectItem value="dump_alert">Dump Alert (&lt;-5% in 1m)</SelectItem>
+                                  <SelectItem value="top_100">🏆 Top 100 Coins Alert</SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormMessage />
@@ -453,26 +461,45 @@ export default function AlertsPage() {
                           )}
                         />
                         
-                        <FormField
-                          control={alertForm.control}
-                          name="coin_symbol"
-                          render={({ field }) => (
-                            <FormItem className="flex flex-col">
-                              <FormLabel className="text-sm sm:text-base">Coin Symbol</FormLabel>
-                              <FormControl>
-                                <Combobox
-                                  options={coinSymbols}
-                                  value={field.value || ''}
-                                  onValueChange={field.onChange}
-                                  placeholder={loadingSymbols ? "Loading..." : "Select coin"}
-                                  searchPlaceholder="Search symbols..."
-                                  emptyText="No symbols found."
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                        {/* Conditionally show Coin Symbol field - hide for top_100 */}
+                        {selectedAlertType !== 'top_100' && (
+                          <FormField
+                            control={alertForm.control}
+                            name="coin_symbol"
+                            render={({ field }) => (
+                              <FormItem className="flex flex-col">
+                                <FormLabel className="text-sm sm:text-base">Coin Symbol</FormLabel>
+                                <FormControl>
+                                  <Combobox
+                                    options={coinSymbols}
+                                    value={field.value || ''}
+                                    onValueChange={field.onChange}
+                                    placeholder={loadingSymbols ? "Loading..." : "Select coin"}
+                                    searchPlaceholder="Search symbols..."
+                                    emptyText="No symbols found."
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        )}
+
+                        {/* Show info message for top_100 */}
+                        {selectedAlertType === 'top_100' && (
+                          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <div className="flex items-start gap-3">
+                              <span className="text-2xl">🏆</span>
+                              <div>
+                                <h4 className="font-semibold text-yellow-900 mb-1">Monitoring Top 100 Coins</h4>
+                                <p className="text-sm text-yellow-800">
+                                  This alert will monitor all top 100 coins by market cap. You'll receive a notification 
+                                  whenever any of these coins meets your threshold criteria in the selected timeframe.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
