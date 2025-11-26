@@ -270,7 +270,7 @@ export default function TelegramConnectionCard({ onConnectionChange }: TelegramC
                 <div className="flex-1">
                   <p className="font-semibold text-green-900">Telegram Connected!</p>
                   <p className="text-sm text-green-700 mt-1">
-                    Bot: @{status.bot_username || 'virajtesting_bot'}
+                    Bot: @{status.bot_username || 'volusignal_alerts_v2_bot'}
                   </p>
                   {status.username && (
                     <p className="text-sm text-green-700">

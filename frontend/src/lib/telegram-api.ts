@@ -172,7 +172,7 @@ export async function getTelegramStatus(): Promise<TelegramStatusResponse | null
     if (!isAuthenticated()) {
       return {
         connected: false,
-        bot_username: 'virajtesting_bot'
+        bot_username: 'volusignal_alerts_v2_bot'
       };
     }
 
@@ -185,7 +185,7 @@ export async function getTelegramStatus(): Promise<TelegramStatusResponse | null
       // Return default disconnected state instead of throwing
       return {
         connected: false,
-        bot_username: 'virajtesting_bot'
+        bot_username: 'volusignal_alerts_v2_bot'
       };
     }
 
@@ -194,7 +194,7 @@ export async function getTelegramStatus(): Promise<TelegramStatusResponse | null
     // Return default disconnected state on error
     return {
       connected: false,
-      bot_username: 'virajtesting_bot'
+      bot_username: 'volusignal_alerts_v2_bot'
     };
   }
 }

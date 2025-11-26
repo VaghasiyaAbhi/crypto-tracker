@@ -97,11 +97,24 @@ If you want a ready-made script for a provider (Hetzner, DigitalOcean, etc.), I 
 ├── nginx/                # Nginx configuration
 ├── pgbouncer/            # Connection pooler config
 ├── db/                   # Database initialization
-├── docs/                 # Documentation
-│   ├── README.md         # This file
-│   └── DEPLOYMENT_GUIDE.md
+│
+├── docs/                 # 📚 All documentation (60+ files)
+│   ├── README.md         # Documentation index
+│   ├── *_FIX.md          # Bug fixes documentation
+│   ├── *_FEATURE.md      # Feature implementation docs
+│   ├── *_GUIDE.md        # Setup and deployment guides
+│   └── *_SUMMARY.md      # Feature summaries
+│
+├── scripts/              # 🔧 Deployment & utility scripts
+│   ├── README.md         # Scripts documentation
+│   ├── deploy-*.sh       # Deployment scripts
+│   ├── fix_502.sh        # Emergency fix script
+│   ├── setup-*.sh        # Setup automation
+│   ├── test-*.sh         # Testing scripts
+│   └── verify_alerts.py  # Alert verification tool
+│
 ├── docker-compose.yml    # Multi-container setup
-└── package.json          # Root package info
+└── README.md             # This file
 ```
 
 ## 🚀 Quick Start
