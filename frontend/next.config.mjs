@@ -31,8 +31,6 @@ const nextConfig = {
   experimental: {
     optimizeCss: true,
     optimizePackageImports: ['lucide-react', '@radix-ui/react-dialog', 'chart.js'],
-    // Reduce aggressive preloading to avoid unused CSS warnings
-    adjustFontFallbacks: true,
   },
   
   // Disable aggressive CSS preloading
