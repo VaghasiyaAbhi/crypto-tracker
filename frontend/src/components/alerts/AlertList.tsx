@@ -112,6 +112,18 @@ export default function AlertList({ alerts, loading, onRefresh }: AlertListProps
           label: 'Volume Spike',
           color: 'bg-cyan-100 text-cyan-800 border-cyan-200',
         };
+      case 'top_100':
+        return {
+          icon: <TrendingUp className="h-5 w-5" />,
+          label: 'Top 100 Coins',
+          color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        };
+      case 'new_coin_listing':
+        return {
+          icon: <Bell className="h-5 w-5" />,
+          label: 'New Coin Listing',
+          color: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+        };
       default:
         return {
           icon: <Bell className="h-5 w-5" />,

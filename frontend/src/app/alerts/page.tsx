@@ -112,6 +112,10 @@ export default function AlertsPage() {
       alertType = backendAlert.alert_type as AlertTypeFromTypes['alert_type'];
     } else if (backendAlert.alert_type === 'volume_change') {
       alertType = 'volume_spike';
+    } else if (backendAlert.alert_type === 'top_100') {
+      alertType = 'top_100';
+    } else if (backendAlert.alert_type === 'new_coin_listing') {
+      alertType = 'new_coin_listing';
     }
 
     // Map notification_channels string to array
