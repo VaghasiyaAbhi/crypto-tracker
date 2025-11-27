@@ -503,31 +503,71 @@ export default function DashboardPage() {
         }
 
         // Fetch initial data via REST API for instant display (before WebSocket)
-        // IMPORTANT: Always fetch USDT pairs by default for clean initial display
+        // IMPORTANT: Use manual-refresh endpoint for LIVE Binance data on initial load
+        // This ensures consistency - same data source as refresh button
         try {
-          console.log('📊 Fetching initial crypto data via REST API (USDT only)...');
-          const initialDataResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/binance-data/?base_currency=USDT&page_size=100`, {
+          console.log('📊 Fetching initial crypto data from LIVE Binance API (USDT only)...');
+          
+          // Use POST to manual-refresh for live data (same as refresh button)
+          const initialDataResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/manual-refresh/`, {
+            method: 'POST',
             headers: {
               'Authorization': `Bearer ${user.access_token}`,
               'Content-Type': 'application/json'
             },
+            body: JSON.stringify({
+              base_currency: 'USDT',
+              page_size: 100
+            })
           });
 
           if (initialDataResponse.ok) {
             const responseData = await initialDataResponse.json();
             // API returns object with 'data' property containing the array
             const initialData = Array.isArray(responseData) ? responseData : (responseData.data || []);
-            console.log(`✅ Loaded ${initialData.length} crypto coins instantly`);
+            console.log(`✅ Loaded ${initialData.length} crypto coins from LIVE Binance`);
             
             if (isMountedRef.current && initialData.length > 0) {
               setCryptoData(initialData);
               setLastUpdateTime(new Date().toLocaleTimeString());
               setLoading(false); // Stop loading immediately after we have initial data
             } else if (isMountedRef.current && initialData.length === 0) {
-              console.warn('⚠️ REST API returned 0 items, waiting for WebSocket...');
+              console.warn('⚠️ Live API returned 0 items, trying database fallback...');
+              // Fallback to database if live API fails
+              const fallbackResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/binance-data/?base_currency=USDT&page_size=100`, {
+                headers: {
+                  'Authorization': `Bearer ${user.access_token}`,
+                  'Content-Type': 'application/json'
+                },
+              });
+              if (fallbackResponse.ok) {
+                const fallbackData = await fallbackResponse.json();
+                const data = Array.isArray(fallbackData) ? fallbackData : (fallbackData.data || []);
+                if (data.length > 0) {
+                  setCryptoData(data);
+                  setLastUpdateTime(new Date().toLocaleTimeString());
+                  setLoading(false);
+                }
+              }
             }
           } else {
-            console.warn('⚠️ Failed to fetch initial data, will rely on WebSocket');
+            console.warn('⚠️ Failed to fetch live data, trying database fallback...');
+            // Fallback to database
+            const fallbackResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/binance-data/?base_currency=USDT&page_size=100`, {
+              headers: {
+                'Authorization': `Bearer ${user.access_token}`,
+                'Content-Type': 'application/json'
+              },
+            });
+            if (fallbackResponse.ok) {
+              const fallbackData = await fallbackResponse.json();
+              const data = Array.isArray(fallbackData) ? fallbackData : (fallbackData.data || []);
+              if (data.length > 0) {
+                setCryptoData(data);
+                setLastUpdateTime(new Date().toLocaleTimeString());
+                setLoading(false);
+              }
+            }
           }
         } catch (fetchError) {
           console.error('❌ Error fetching initial data:', fetchError);
