@@ -503,9 +503,10 @@ export default function DashboardPage() {
         }
 
         // Fetch initial data via REST API for instant display (before WebSocket)
+        // IMPORTANT: Always fetch USDT pairs by default for clean initial display
         try {
-          console.log('📊 Fetching initial crypto data via REST API...');
-          const initialDataResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/binance-data/`, {
+          console.log('📊 Fetching initial crypto data via REST API (USDT only)...');
+          const initialDataResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/binance-data/?base_currency=USDT&page_size=100`, {
             headers: {
               'Authorization': `Bearer ${user.access_token}`,
               'Content-Type': 'application/json'
@@ -624,10 +625,24 @@ export default function DashboardPage() {
               firstSymbols: items.slice(0, 5).map(i => i.symbol)
             });
             
+            // ✨ IMPORTANT: Only accept snapshot if it matches current currency
+            // This prevents stale data from other currencies being displayed
+            const snapshotCurrency = msg.quote_currency || 'USDT';
+            if (snapshotCurrency !== baseCurrencyRef.current) {
+              console.log(`⚠️ Ignoring snapshot for ${snapshotCurrency} - current currency is ${baseCurrencyRef.current}`);
+              return;
+            }
+            
             if (!snapshotAccumRef.current) {
               snapshotAccumRef.current = { chunks: msg.total_chunks || 1, total: msg.total_count || 0, buffer: new Map() };
             }
-            items.forEach(i => snapshotAccumRef.current!.buffer.set(i.symbol, i));
+            
+            // Filter items to only include those matching current currency
+            items.forEach(i => {
+              if (i.symbol.endsWith(baseCurrencyRef.current)) {
+                snapshotAccumRef.current!.buffer.set(i.symbol, i);
+              }
+            });
             
             // When last chunk arrives, commit
             if (msg.chunk >= (snapshotAccumRef.current.chunks || 1)) {
