@@ -200,29 +200,69 @@ export default function DashboardPage() {
     });
   };
 
-  // Manual refresh function for free users
-  const handleManualRefresh = useCallback(() => {
-    if (!socketRef.current) return;
-
+  // Manual refresh function - fetches LIVE data from Binance
+  const handleManualRefresh = useCallback(async () => {
     setIsRefreshing(true);
     setLastUpdateTime(new Date().toLocaleTimeString());
 
-    // Request fresh data via WebSocket
     try {
-      const pageSize = itemCount === 'All' ? 500 : Math.min(parseInt(itemCount), 100);
-      socketRef.current.send(JSON.stringify({
-        type: 'request_snapshot',
-        sort_by: 'profit',
-        sort_order: 'desc',
-        page_size: pageSize,
-        quote_currency: baseCurrency
-      }));
-    } catch (error) {
-      console.error('Failed to request data refresh:', error);
-    }
+      // Get user token from storage
+      const userStr = sessionStorage.getItem('user') || localStorage.getItem('user');
+      let token = null;
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        token = user.access_token;
+      }
 
-    // Stop refreshing indicator after 2 seconds
-    setTimeout(() => setIsRefreshing(false), 2000);
+      if (token) {
+        const pageSize = itemCount === 'All' ? 500 : Math.min(parseInt(itemCount), 100);
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        
+        // Call manual-refresh endpoint which fetches LIVE data from Binance
+        const response = await fetch(`${apiUrl}/api/manual-refresh/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            base_currency: baseCurrency,
+            page_size: pageSize
+          })
+        });
+
+        if (response.ok) {
+          const responseData = await response.json();
+          const newData = responseData.data || [];
+          
+          if (newData.length > 0) {
+            setCryptoData(newData);
+            console.log(`✅ Manual refresh: Updated ${responseData.symbols_updated} symbols with LIVE Binance data`);
+          }
+        } else {
+          // Fallback to regular binance-data endpoint
+          console.log('⚠️ Manual refresh failed, falling back to cached data');
+          const fallbackResponse = await fetch(`${apiUrl}/api/binance-data/?page_size=${pageSize}&base_currency=${baseCurrency}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+          });
+          
+          if (fallbackResponse.ok) {
+            const fallbackData = await fallbackResponse.json();
+            const data = Array.isArray(fallbackData) ? fallbackData : (fallbackData.data || []);
+            if (data.length > 0) {
+              setCryptoData(data);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh data:', error);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 1000);
+    }
   }, [itemCount, baseCurrency]);
 
   // WebSocket-only data fetching - no more REST API calls
@@ -528,7 +568,7 @@ export default function DashboardPage() {
       }
 
       const isLocal = window.location.hostname === 'localhost';
-      const localWsUrl = 'ws://localhost:8080';
+      const localWsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
       const productionWsUrl = process.env.NEXT_PUBLIC_WS_URL || `wss://${window.location.host}`;
       const wsUrl = isLocal ? localWsUrl : productionWsUrl;
 

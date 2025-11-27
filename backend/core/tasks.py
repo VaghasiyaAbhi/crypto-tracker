@@ -1890,130 +1890,72 @@ def bulk_import_crypto_data_task(self, data_batch: List[Dict[str, Any]]):
 @shared_task(bind=True, max_retries=3)
 def fetch_binance_data_task(self):
     """
-    🚀 OPTIMIZED BATCH PROCESSOR for 95%+ Symbol Update Ratio
+    🚀 REAL BINANCE DATA FETCHER - Uses actual historical klines data
     
     Strategy:
-    - Processes ALL currencies (USDT, USDC, FDUSD, BNB, BTC) in optimized batches
-    - Uses efficient bulk operations for speed
-    - Targets 95%+ simultaneous updates
-    - Simplified architecture for reliability
+    - Fetches REAL price/volume data from Binance klines API (1m candles)
+    - Calculates actual percentage changes from historical prices
+    - Uses real volume data instead of estimates
+    - Processes ALL currencies (USDT, USDC, FDUSD, BNB, BTC)
     """
     try:
-        import requests
-        from decimal import Decimal
         from django.db import transaction
         import time
+        from .binance_realtime import realtime_fetcher
         
-        logger.info("🚀 Starting OPTIMIZED BATCH PROCESSOR for 95%+ update ratio across ALL currencies")
+        logger.info("🚀 Starting REAL BINANCE DATA FETCH with klines API")
         
-        # Fetch fresh data from Binance API
-        url = 'https://api.binance.com/api/v3/ticker/24hr'
-        response = requests.get(url, timeout=8)
-        response.raise_for_status()
+        # Fetch 24hr ticker data to get symbols list
+        ticker_data = realtime_fetcher.fetch_ticker_24hr()
         
-        data = response.json()
-        
-        # Filter for ALL quote currencies with volume (USDT, USDC, FDUSD, BNB, BTC)
+        # Filter for ALL quote currencies with volume
         valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC']
-        all_pairs = [item for item in data 
+        all_pairs = [item['symbol'] for item in ticker_data 
                      if any(item['symbol'].endswith(currency) for currency in valid_currencies)
-                     and float(item.get('quoteVolume', 0)) > 1000]  # $1K+ for broader coverage
+                     and float(item.get('quoteVolume', 0)) > 1000]
         
         total_symbols = len(all_pairs)
-        logger.info(f'📊 Processing {total_symbols} symbols across ALL currencies (USDT, USDC, FDUSD, BNB, BTC) in optimized batches')
+        logger.info(f'📊 Processing {total_symbols} symbols with REAL historical klines data')
         
-        # Process in optimized batches for maximum update ratio
-        batch_size = 100  # Larger batches for efficiency
+        # Process in smaller batches to respect rate limits
+        batch_size = 30  # Smaller batches for klines API rate limits (Binance: 1200 req/min)
         total_updated = 0
         total_processed = 0
         batch_count = 0
         
         start_time = time.time()
         
-        # Process all symbols in batches
+        # Process all symbols in batches with REAL klines data
         for i in range(0, total_symbols, batch_size):
-            batch = all_pairs[i:i + batch_size]
+            batch_symbols = all_pairs[i:i + batch_size]
             batch_count += 1
             
-            logger.info(f"⚡ Processing batch {batch_count}: {len(batch)} symbols")
+            logger.info(f"⚡ Batch {batch_count}: Fetching REAL data for {len(batch_symbols)} symbols via klines API")
             
-            # Use atomic transaction for each batch
+            # Fetch real data for this batch
+            batch_real_data = realtime_fetcher.fetch_batch_with_delay(batch_symbols)
+            
+            # Use atomic transaction for batch
             with transaction.atomic():
-                for item in batch:
+                for real_metrics in batch_real_data:
                     try:
-                        symbol = item['symbol']
-                        current_price = float(item['lastPrice'])
+                        symbol = real_metrics['symbol']
                         
-                        # Get existing record to calculate return percentages
-                        existing = CryptoData.objects.filter(symbol=symbol).first()
-                        
-                        # Prepare defaults for upsert
-                        defaults = {
-                            'last_price': Decimal(item['lastPrice']),
-                            'price_change_percent_24h': Decimal(item['priceChangePercent']),
-                            'high_price_24h': Decimal(item['highPrice']),
-                            'low_price_24h': Decimal(item['lowPrice']),
-                            'quote_volume_24h': Decimal(item['quoteVolume']),
-                            'bid_price': Decimal(item['bidPrice']) if item['bidPrice'] else None,
-                            'ask_price': Decimal(item['askPrice']) if item['askPrice'] else None,
-                        }
-                        
-                        # ========== CALCULATE RETURN % IN REAL-TIME ==========
-                        # This prevents N/A by calculating immediately on price update
-                        if existing:
-                            # Calculate return % for all timeframes
-                            if existing.m1 and float(existing.m1) > 0:
-                                defaults['m1_r_pct'] = Decimal(str(round(((current_price - float(existing.m1)) / float(existing.m1)) * 100, 4)))
-                            else:
-                                defaults['m1_r_pct'] = Decimal('0.0000')
-                                
-                            if existing.m2 and float(existing.m2) > 0:
-                                defaults['m2_r_pct'] = Decimal(str(round(((current_price - float(existing.m2)) / float(existing.m2)) * 100, 4)))
-                            else:
-                                defaults['m2_r_pct'] = Decimal('0.0000')
-                                
-                            if existing.m3 and float(existing.m3) > 0:
-                                defaults['m3_r_pct'] = Decimal(str(round(((current_price - float(existing.m3)) / float(existing.m3)) * 100, 4)))
-                            else:
-                                defaults['m3_r_pct'] = Decimal('0.0000')
-                                
-                            if existing.m5 and float(existing.m5) > 0:
-                                defaults['m5_r_pct'] = Decimal(str(round(((current_price - float(existing.m5)) / float(existing.m5)) * 100, 4)))
-                            else:
-                                defaults['m5_r_pct'] = Decimal('0.0000')
-                                
-                            if existing.m10 and float(existing.m10) > 0:
-                                defaults['m10_r_pct'] = Decimal(str(round(((current_price - float(existing.m10)) / float(existing.m10)) * 100, 4)))
-                            else:
-                                defaults['m10_r_pct'] = Decimal('0.0000')
-                                
-                            if existing.m15 and float(existing.m15) > 0:
-                                defaults['m15_r_pct'] = Decimal(str(round(((current_price - float(existing.m15)) / float(existing.m15)) * 100, 4)))
-                            else:
-                                defaults['m15_r_pct'] = Decimal('0.0000')
-                                
-                            if existing.m60 and float(existing.m60) > 0:
-                                defaults['m60_r_pct'] = Decimal(str(round(((current_price - float(existing.m60)) / float(existing.m60)) * 100, 4)))
-                            else:
-                                defaults['m60_r_pct'] = Decimal('0.0000')
-                        else:
-                            # New coin - initialize all return % to 0
-                            for tf in ['m1', 'm2', 'm3', 'm5', 'm10', 'm15', 'm60']:
-                                defaults[f'{tf}_r_pct'] = Decimal('0.0000')
-                        
-                        # Efficient upsert operation with return % calculated
+                        # Update or create with REAL data
                         crypto_data, created = CryptoData.objects.update_or_create(
                             symbol=symbol,
-                            defaults=defaults
+                            defaults=real_metrics
                         )
                         
                         total_updated += 1
                         total_processed += 1
                         
                     except Exception as e:
-                        logger.error(f"Error processing {item.get('symbol', 'unknown')}: {e}")
+                        logger.error(f"Error saving {real_metrics.get('symbol', 'unknown')}: {e}")
                         total_processed += 1
                         continue
+            
+            logger.info(f"✅ Batch {batch_count}: Saved {len(batch_real_data)} symbols with REAL klines data")
         
         execution_time = time.time() - start_time
         update_ratio = (total_updated / total_processed * 100) if total_processed > 0 else 0

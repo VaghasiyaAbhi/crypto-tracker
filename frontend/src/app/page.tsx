@@ -17,6 +17,8 @@ import 'react-phone-input-2/lib/style.css';
 import { signInWithPopup, signOut } from "firebase/auth";
 import { auth, provider } from '@/lib/firebaseConfig';
 import { saveUser } from '@/lib/auth';
+import { getApiEndpoint } from '@/lib/config';
+
 
 
 // Define the schema for the login form fields.
@@ -81,7 +83,7 @@ export default function App() {
     setIsLoggingIn(true);
     setLoginMessage(null);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/request-login-token/`, {
+      const response = await fetch(getApiEndpoint('/api/request-login-token/'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -109,7 +111,7 @@ export default function App() {
     setIsRegistering(true);
     setRegisterMessage(null);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/register/`, {
+      const response = await fetch(getApiEndpoint('/api/register/'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -147,7 +149,7 @@ export default function App() {
       const lastName = lastNameParts.join(' ');
 
       // Send the ID token to your Django backend
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/google-login/`, {
+      const response = await fetch(getApiEndpoint('/api/google-login/'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

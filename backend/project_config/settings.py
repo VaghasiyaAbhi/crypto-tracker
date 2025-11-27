@@ -29,7 +29,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # 'corsheaders',  # Disabled: CORS handled by nginx to avoid duplicate headers
+    'corsheaders',  # Enable for local development
     'rest_framework',
     'rest_framework.authtoken',
     'django_celery_beat',  # Celery Beat scheduler for periodic tasks
@@ -39,8 +39,7 @@ INSTALLED_APPS = [
 
 # --- MIDDLEWARE (Corrected Order) ---
 MIDDLEWARE = [
-    # CORS Middleware disabled: nginx handles CORS to avoid duplicate headers
-    # 'corsheaders.middleware.CorsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # Enable for local development
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -51,17 +50,17 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# --- CORS SETTINGS (Disabled: nginx handles CORS) ---
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:3000",
-#     "http://localhost:8080",  # Nginx load balancer
-# ]
-# if FRONTEND_URL:
-#     CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
-# if os.environ.get('CORS_ALLOWED_ORIGINS'):
-#     CORS_ALLOWED_ORIGINS.extend(os.environ.get('CORS_ALLOWED_ORIGINS').split(','))
-# 
-# CORS_ALLOW_CREDENTIALS = True
+# --- CORS SETTINGS (Enable for local development) ---
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:8080",  # Nginx load balancer
+]
+if FRONTEND_URL:
+    CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
+if os.environ.get('CORS_ALLOWED_ORIGINS'):
+    CORS_ALLOWED_ORIGINS.extend(os.environ.get('CORS_ALLOWED_ORIGINS').split(','))
+
+CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",

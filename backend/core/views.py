@@ -639,3 +639,343 @@ class CoinSymbolsView(APIView):
                 'error': 'Failed to fetch coin symbols',
                 'details': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ManualRefreshView(APIView):
+    """
+    API endpoint to manually trigger data refresh from Binance
+    Fetches REAL LIVE data directly from Binance API
+    - FREE users: Only basic data (no calculated columns to prevent data leakage)
+    - PAID users (basic/enterprise): Full data with all calculated columns
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            import requests
+            from decimal import Decimal
+            import concurrent.futures
+            
+            logger.info(f"Manual refresh triggered by user {request.user.email}")
+            
+            # Check user's subscription plan
+            user_plan = getattr(request.user, 'subscription_plan', 'free') or 'free'
+            is_paid_user = user_plan in ['basic', 'enterprise']
+            
+            logger.info(f"User {request.user.email} plan: {user_plan}, is_paid: {is_paid_user}")
+            
+            # Get base currency from request (default USDT)
+            base_currency = request.data.get('base_currency', 'USDT').upper()
+            page_size = min(int(request.data.get('page_size', 100)), 500)
+            
+            # Step 1: Fetch 24hr ticker data (fast - single API call)
+            response = requests.get('https://api.binance.com/api/v3/ticker/24hr', timeout=10)
+            response.raise_for_status()
+            binance_data = response.json()
+            
+            # Filter and sort by volume to get top coins
+            filtered_data = []
+            for item in binance_data:
+                symbol = item.get('symbol', '')
+                if not symbol.endswith(base_currency):
+                    continue
+                quote_volume = float(item.get('quoteVolume', 0))
+                if quote_volume <= 0:
+                    continue
+                filtered_data.append(item)
+            
+            # Sort by 24h price change (most profitable first)
+            filtered_data.sort(key=lambda x: float(x.get('priceChangePercent', 0)), reverse=True)
+            top_symbols = filtered_data[:page_size]
+            
+            # FREE USERS: Return only basic data (no calculated columns)
+            if not is_paid_user:
+                live_data = []
+                for item in top_symbols:
+                    live_data.append({
+                        'symbol': item['symbol'],
+                        'last_price': item['lastPrice'],
+                        'price_change_percent_24h': item['priceChangePercent'],
+                        'high_price_24h': item['highPrice'],
+                        'low_price_24h': item['lowPrice'],
+                        'quote_volume_24h': item['quoteVolume'],
+                        'bid_price': item.get('bidPrice'),
+                        'ask_price': item.get('askPrice'),
+                    })
+                
+                logger.info(f"Manual refresh complete (FREE user): {len(live_data)} symbols with basic data for {base_currency}")
+                
+                return Response({
+                    'status': 'success',
+                    'message': f'Live data fetched from Binance.',
+                    'data': live_data,
+                    'symbols_updated': len(live_data),
+                    'base_currency': base_currency,
+                    'last_updated': timezone.now().isoformat()
+                }, status=status.HTTP_200_OK)
+            
+            # PAID USERS: Fetch klines for calculated columns
+            def fetch_klines_for_symbol(ticker_item):
+                """Fetch klines and calculate metrics for a single symbol"""
+                symbol = ticker_item['symbol']
+                current_price = float(ticker_item['lastPrice'])
+                
+                try:
+                    # Fetch 1-minute klines (last 65 candles - need 61+ for 60m calculations)
+                    klines_url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1m&limit=65"
+                    klines_response = requests.get(klines_url, timeout=5)
+                    
+                    if klines_response.status_code != 200:
+                        return self._basic_data(ticker_item)
+                    
+                    klines = klines_response.json()
+                    if len(klines) < 2:
+                        return self._basic_data(ticker_item)
+                    
+                    # Build metrics with calculated columns
+                    metrics = {
+                        'symbol': symbol,
+                        'last_price': ticker_item['lastPrice'],
+                        'price_change_percent_24h': ticker_item['priceChangePercent'],
+                        'high_price_24h': ticker_item['highPrice'],
+                        'low_price_24h': ticker_item['lowPrice'],
+                        'quote_volume_24h': ticker_item['quoteVolume'],
+                        'bid_price': ticker_item.get('bidPrice'),
+                        'ask_price': ticker_item.get('askPrice'),
+                    }
+                    
+                    # Calculate spread (handle zero bid price)
+                    bid = float(ticker_item.get('bidPrice') or 0)
+                    ask = float(ticker_item.get('askPrice') or 0)
+                    if bid > 0 and ask > 0:
+                        metrics['spread'] = str(round(ask - bid, 10))
+                    else:
+                        metrics['spread'] = '0'
+                    
+                    # Helper function to calculate RSI
+                    def calculate_rsi(closes, period=14):
+                        """Calculate RSI from closing prices"""
+                        if len(closes) < period + 1:
+                            return None
+                        
+                        gains = []
+                        losses = []
+                        for i in range(1, len(closes)):
+                            change = closes[i] - closes[i-1]
+                            if change > 0:
+                                gains.append(change)
+                                losses.append(0)
+                            else:
+                                gains.append(0)
+                                losses.append(abs(change))
+                        
+                        if len(gains) < period:
+                            return None
+                        
+                        # Use simple moving average for first RSI
+                        avg_gain = sum(gains[-period:]) / period
+                        avg_loss = sum(losses[-period:]) / period
+                        
+                        if avg_loss == 0:
+                            return 100.0
+                        
+                        rs = avg_gain / avg_loss
+                        rsi = 100 - (100 / (1 + rs))
+                        return round(rsi, 2)
+                    
+                    # Get closing prices for RSI calculation
+                    closes = [float(k[4]) for k in klines]
+                    
+                    # Calculate RSI for different periods
+                    # RSI 1m (use last 15 candles)
+                    if len(closes) >= 15:
+                        rsi_1m = calculate_rsi(closes[-15:], 14)
+                        if rsi_1m is not None:
+                            metrics['rsi_1m'] = str(rsi_1m)
+                    
+                    # RSI 3m (use last 17 candles)
+                    if len(closes) >= 17:
+                        rsi_3m = calculate_rsi(closes[-17:], 14)
+                        if rsi_3m is not None:
+                            metrics['rsi_3m'] = str(rsi_3m)
+                    
+                    # RSI 5m (use last 19 candles)
+                    if len(closes) >= 19:
+                        rsi_5m = calculate_rsi(closes[-19:], 14)
+                        if rsi_5m is not None:
+                            metrics['rsi_5m'] = str(rsi_5m)
+                    
+                    # RSI 15m (use last 29 candles)
+                    if len(closes) >= 29:
+                        rsi_15m = calculate_rsi(closes[-29:], 14)
+                        if rsi_15m is not None:
+                            metrics['rsi_15m'] = str(rsi_15m)
+                    
+                    # Calculate REAL price changes from klines
+                    # 1 minute ago (index -2 because -1 is current incomplete candle)
+                    if len(klines) >= 2:
+                        m1_price = float(klines[-2][4])  # Close price
+                        m1_volume = float(klines[-2][7])  # Quote volume
+                        metrics['m1'] = str(round(((current_price - m1_price) / m1_price) * 100, 4)) if m1_price > 0 else '0'
+                        metrics['m1_r_pct'] = metrics['m1']
+                        metrics['m1_vol'] = str(round(m1_volume, 2))
+                        metrics['m1_low'] = klines[-2][3]
+                        metrics['m1_high'] = klines[-2][2]
+                        m1_low = float(klines[-2][3])
+                        m1_high = float(klines[-2][2])
+                        metrics['m1_range_pct'] = str(round(((m1_high - m1_low) / m1_low) * 100, 4)) if m1_low > 0 else '0'
+                    
+                    # 2 minutes ago
+                    if len(klines) >= 3:
+                        m2_price = float(klines[-3][4])
+                        metrics['m2'] = str(round(((current_price - m2_price) / m2_price) * 100, 4)) if m2_price > 0 else '0'
+                        metrics['m2_r_pct'] = metrics['m2']
+                    
+                    # 3 minutes ago
+                    if len(klines) >= 4:
+                        m3_price = float(klines[-4][4])
+                        metrics['m3'] = str(round(((current_price - m3_price) / m3_price) * 100, 4)) if m3_price > 0 else '0'
+                        metrics['m3_r_pct'] = metrics['m3']
+                    
+                    # 5 minutes ago
+                    if len(klines) >= 6:
+                        m5_price = float(klines[-6][4])
+                        m5_volume = sum(float(klines[i][7]) for i in range(-5, 0))
+                        metrics['m5'] = str(round(((current_price - m5_price) / m5_price) * 100, 4)) if m5_price > 0 else '0'
+                        metrics['m5_r_pct'] = metrics['m5']
+                        metrics['m5_vol'] = str(round(m5_volume, 2))
+                        m5_highs = [float(klines[i][2]) for i in range(-5, 0)]
+                        m5_lows = [float(klines[i][3]) for i in range(-5, 0)]
+                        metrics['m5_low'] = str(min(m5_lows))
+                        metrics['m5_high'] = str(max(m5_highs))
+                        metrics['m5_range_pct'] = str(round(((max(m5_highs) - min(m5_lows)) / min(m5_lows)) * 100, 4)) if min(m5_lows) > 0 else '0'
+                    
+                    # 10 minutes ago
+                    if len(klines) >= 11:
+                        m10_price = float(klines[-11][4])
+                        m10_volume = sum(float(klines[i][7]) for i in range(-10, 0))
+                        metrics['m10'] = str(round(((current_price - m10_price) / m10_price) * 100, 4)) if m10_price > 0 else '0'
+                        metrics['m10_r_pct'] = metrics['m10']
+                        metrics['m10_vol'] = str(round(m10_volume, 2))
+                        m10_highs = [float(klines[i][2]) for i in range(-10, 0)]
+                        m10_lows = [float(klines[i][3]) for i in range(-10, 0)]
+                        metrics['m10_low'] = str(min(m10_lows))
+                        metrics['m10_high'] = str(max(m10_highs))
+                        metrics['m10_range_pct'] = str(round(((max(m10_highs) - min(m10_lows)) / min(m10_lows)) * 100, 4)) if min(m10_lows) > 0 else '0'
+                    
+                    # 15 minutes ago
+                    if len(klines) >= 16:
+                        m15_price = float(klines[-16][4])
+                        m15_volume = sum(float(klines[i][7]) for i in range(-15, 0))
+                        metrics['m15'] = str(round(((current_price - m15_price) / m15_price) * 100, 4)) if m15_price > 0 else '0'
+                        metrics['m15_r_pct'] = metrics['m15']
+                        metrics['m15_vol'] = str(round(m15_volume, 2))
+                        m15_highs = [float(klines[i][2]) for i in range(-15, 0)]
+                        m15_lows = [float(klines[i][3]) for i in range(-15, 0)]
+                        metrics['m15_low'] = str(min(m15_lows))
+                        metrics['m15_high'] = str(max(m15_highs))
+                        metrics['m15_range_pct'] = str(round(((max(m15_highs) - min(m15_lows)) / min(m15_lows)) * 100, 4)) if min(m15_lows) > 0 else '0'
+                    
+                    # 60 minutes ago (1 hour) - need klines[-61] for 60 minutes ago price
+                    if len(klines) >= 61:
+                        m60_price = float(klines[-61][4])  # Price 60 minutes ago
+                        m60_volume = sum(float(klines[i][7]) for i in range(-60, 0))
+                        metrics['m60'] = str(round(((current_price - m60_price) / m60_price) * 100, 4)) if m60_price > 0 else '0'
+                        metrics['m60_r_pct'] = metrics['m60']
+                        metrics['m60_vol'] = str(round(m60_volume, 2))
+                        m60_highs = [float(klines[i][2]) for i in range(-60, 0)]
+                        m60_lows = [float(klines[i][3]) for i in range(-60, 0)]
+                        metrics['m60_low'] = str(min(m60_lows))
+                        metrics['m60_high'] = str(max(m60_highs))
+                        metrics['m60_range_pct'] = str(round(((max(m60_highs) - min(m60_lows)) / min(m60_lows)) * 100, 4)) if min(m60_lows) > 0 else '0'
+                    
+                    # Calculate volume percentages
+                    total_vol_24h = float(ticker_item['quoteVolume'])
+                    if total_vol_24h > 0:
+                        if 'm1_vol' in metrics:
+                            metrics['m1_vol_pct'] = str(round((float(metrics['m1_vol']) / total_vol_24h) * 100, 4))
+                        if 'm5_vol' in metrics:
+                            metrics['m5_vol_pct'] = str(round((float(metrics['m5_vol']) / total_vol_24h) * 100, 4))
+                        if 'm10_vol' in metrics:
+                            metrics['m10_vol_pct'] = str(round((float(metrics['m10_vol']) / total_vol_24h) * 100, 4))
+                        if 'm15_vol' in metrics:
+                            metrics['m15_vol_pct'] = str(round((float(metrics['m15_vol']) / total_vol_24h) * 100, 4))
+                        if 'm60_vol' in metrics:
+                            metrics['m60_vol_pct'] = str(round((float(metrics['m60_vol']) / total_vol_24h) * 100, 4))
+                    
+                    # Calculate buy/sell volumes from taker buy volume
+                    for tf, count in [('m1', 1), ('m2', 2), ('m3', 3), ('m5', 5), ('m10', 10), ('m15', 15)]:
+                        if len(klines) >= count + 1:
+                            total_vol = sum(float(klines[j][7]) for j in range(-count, 0))
+                            buy_vol = sum(float(klines[j][10]) for j in range(-count, 0))
+                            sell_vol = total_vol - buy_vol
+                            metrics[f'{tf}_bv'] = str(round(buy_vol, 2))
+                            metrics[f'{tf}_sv'] = str(round(sell_vol, 2))
+                            metrics[f'{tf}_nv'] = str(round(buy_vol - sell_vol, 2))
+                    
+                    # 60-minute buy/sell volumes (need 61 candles)
+                    if len(klines) >= 61:
+                        total_vol = sum(float(klines[j][7]) for j in range(-60, 0))
+                        buy_vol = sum(float(klines[j][10]) for j in range(-60, 0))
+                        sell_vol = total_vol - buy_vol
+                        metrics['m60_bv'] = str(round(buy_vol, 2))
+                        metrics['m60_sv'] = str(round(sell_vol, 2))
+                        metrics['m60_nv'] = str(round(buy_vol - sell_vol, 2))
+                    
+                    return metrics
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to fetch klines for {symbol}: {e}")
+                    return self._basic_data(ticker_item)
+            
+            # Use ThreadPoolExecutor for parallel klines fetching (much faster!)
+            live_data = []
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                futures = {executor.submit(fetch_klines_for_symbol, item): item for item in top_symbols}
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        result = future.result()
+                        if result:
+                            live_data.append(result)
+                    except Exception as e:
+                        logger.error(f"Error in parallel fetch: {e}")
+            
+            # Sort by price change again (parallel execution may change order)
+            live_data.sort(key=lambda x: float(x.get('price_change_percent_24h', 0)), reverse=True)
+            
+            logger.info(f"Manual refresh complete (PAID user): {len(live_data)} symbols with calculated data for {base_currency}")
+            
+            return Response({
+                'status': 'success',
+                'message': f'Live data fetched from Binance with real calculations.',
+                'data': live_data,
+                'symbols_updated': len(live_data),
+                'base_currency': base_currency,
+                'last_updated': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Binance API error: {e}")
+            return Response({
+                'error': 'Failed to fetch data from Binance',
+                'details': str(e)
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except Exception as e:
+            logger.error(f"Failed to trigger manual refresh: {e}")
+            return Response({
+                'error': 'Failed to refresh data',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _basic_data(self, ticker_item):
+        """Return basic data without klines calculations"""
+        return {
+            'symbol': ticker_item['symbol'],
+            'last_price': ticker_item['lastPrice'],
+            'price_change_percent_24h': ticker_item['priceChangePercent'],
+            'high_price_24h': ticker_item['highPrice'],
+            'low_price_24h': ticker_item['lowPrice'],
+            'quote_volume_24h': ticker_item['quoteVolume'],
+            'bid_price': ticker_item.get('bidPrice'),
+            'ask_price': ticker_item.get('askPrice'),
+        }
