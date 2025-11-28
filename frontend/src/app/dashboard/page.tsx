@@ -714,7 +714,31 @@ export default function DashboardPage() {
               const merged = Array.from(snapshotAccumRef.current.buffer.values());
               console.log('✅ Snapshot complete - Total symbols:', merged.length, 'First 5:', merged.slice(0, 5).map(i => i.symbol));
               snapshotAccumRef.current = null;
-              setCryptoData(merged);
+              
+              // ✨ FIX: If we already have data, UPDATE values without changing symbol order
+              // This prevents the "flash" effect where symbols suddenly reorder after initial load
+              setCryptoData(prevData => {
+                if (prevData.length === 0) {
+                  // No previous data - use snapshot directly
+                  return merged;
+                }
+                
+                // Create a map of new data for quick lookup
+                const newDataMap = new Map(merged.map(item => [item.symbol, item]));
+                
+                // Update existing items with new values, keeping same order
+                const updated = prevData.map(existingItem => {
+                  const newItem = newDataMap.get(existingItem.symbol);
+                  return newItem || existingItem; // Use new data if available, otherwise keep old
+                });
+                
+                // Add any new symbols that weren't in previous data (append at end)
+                const existingSymbols = new Set(prevData.map(item => item.symbol));
+                const newSymbols = merged.filter(item => !existingSymbols.has(item.symbol));
+                
+                return [...updated, ...newSymbols];
+              });
+              
               setIsRefreshing(false);
               setLoading(false); // Stop loading spinner once WebSocket data arrives
             }
