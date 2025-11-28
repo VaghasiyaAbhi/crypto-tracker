@@ -814,14 +814,19 @@ export default function DashboardPage() {
           // ONLY premium users get automatic data refresh
           if (currentIsPremium && socketRef.current?.readyState === WebSocket.OPEN) {
             const pageSize = currentItemCount === 'All' ? 500 : Math.min(parseInt(currentItemCount), 100);
-            console.log('🚀 Sending refresh request - pageSize:', pageSize, 'currency:', currentCurrency);
-            socketRef.current.send(JSON.stringify({
-              type: 'request_snapshot',
-              sort_by: 'profit',
-              sort_order: 'desc',
-              page_size: pageSize,
-              quote_currency: currentCurrency
-            }));
+            console.log('🚀 Sending refresh request - pageSize:', pageSize, 'currency:', currentCurrency, 'socketState:', socketRef.current?.readyState);
+            try {
+              socketRef.current.send(JSON.stringify({
+                type: 'request_snapshot',
+                sort_by: 'profit',
+                sort_order: 'desc',
+                page_size: pageSize,
+                quote_currency: currentCurrency
+              }));
+              console.log('✅ WebSocket request sent successfully');
+            } catch (sendError) {
+              console.error('❌ Failed to send WebSocket request:', sendError);
+            }
           } else {
             if (!currentIsPremium) {
               console.log('⛔ Auto-refresh skipped - User is not premium');
