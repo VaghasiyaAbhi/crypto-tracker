@@ -158,7 +158,21 @@ export default function DashboardPage() {
   const dataBatchRef = useRef<Map<string, CryptoData>>(new Map());
   const baseCurrencyRef = useRef<string>(baseCurrency); // ✨ Ref to track current currency for WebSocket handler
   const itemCountRef = useRef<string>(itemCount); // ✨ Ref to track itemCount for interval
-  const isPremiumRef = useRef<boolean>(isPremium); // ✨ Ref to track premium status for interval
+  // ✨ Initialize isPremiumRef from localStorage to avoid race condition
+  const getInitialPremiumStatus = (): boolean => {
+    if (typeof window !== 'undefined') {
+      try {
+        const userStr = sessionStorage.getItem('user') || localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          const plan = user.subscription_plan || 'free';
+          return plan === 'basic' || plan === 'enterprise' || user.is_premium_user === true;
+        }
+      } catch { /* ignore */ }
+    }
+    return false;
+  };
+  const isPremiumRef = useRef<boolean>(getInitialPremiumStatus());
   const snapshotAccumRef = useRef<{ chunks: number; total: number; buffer: Map<string, CryptoData> } | null>(null);
   const isMountedRef = useRef<boolean>(true); // Track if component is mounted
   
@@ -1160,9 +1174,19 @@ export default function DashboardPage() {
       return (
         <a href={tradeLink} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2">
           <span className="font-medium text-lg">{baseSymbol}</span>
-          <div className="h-5 w-5 relative flex items-center justify-center">
-            <Image src={selectedExchangeData.logo} alt={selectedExchangeData.name} width={20} height={20} className="object-contain" />
-          </div>
+          {/* Use img tag with inline fallback for better reliability */}
+          <img 
+            src={selectedExchangeData.logo} 
+            alt={selectedExchangeData.name} 
+            width={20} 
+            height={20} 
+            className="object-contain h-5 w-5"
+            loading="lazy"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+            }}
+          />
         </a>
       );
     }
@@ -1366,7 +1390,19 @@ export default function DashboardPage() {
                   )}
                   onClick={() => setSelectedExchange(exchange.id)}
                 >
-                  <Image src={exchange.logo} alt={exchange.name} width={32} height={32} className="object-contain sm:w-10 sm:h-10" />
+                  {/* Use img tag with error handling for reliability */}
+                  <img 
+                    src={exchange.logo} 
+                    alt={exchange.name} 
+                    width={32} 
+                    height={32} 
+                    className="object-contain w-8 h-8 sm:w-10 sm:h-10"
+                    loading="lazy"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                    }}
+                  />
                   <span className="font-medium text-gray-700 text-xs sm:text-sm">{exchange.name}</span>
                 </div>
               ))}

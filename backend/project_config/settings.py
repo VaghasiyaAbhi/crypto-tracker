@@ -121,7 +121,7 @@ else:
         }
     }
 
-# --- CACHING with Redis (Optimized for low memory usage) ---
+# --- CACHING with Redis (Optimized with retry logic for stability) ---
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
@@ -131,11 +131,15 @@ CACHES = {
             'CONNECTION_POOL_KWARGS': {
                 'max_connections': 25,
                 'retry_on_timeout': True,
+                'socket_connect_timeout': 5,
+                'socket_timeout': 5,
+                'health_check_interval': 10,
             },
             'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
             'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            'IGNORE_EXCEPTIONS': True,  # Don't crash on Redis errors
         },
-        'TIMEOUT': 600,  # 10 minutes cache timeout (increased from 5 min)
+        'TIMEOUT': 600,  # 10 minutes cache timeout
         'KEY_PREFIX': 'crypto_tracker',
     }
 }
@@ -181,14 +185,21 @@ CELERY_BEAT_SCHEDULE = {
     # },
 }
 
-# --- CHANNELS (Optimized for low memory) ---
+# --- CHANNELS (Optimized with retry logic for stability) ---
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": { 
-            "hosts": [os.environ.get('REDIS_URL', 'redis://localhost:6379')],
-            "capacity": 500,  # Reduced from 1500
-            "expiry": 30,     # Reduced from 60s
+            "hosts": [{
+                "address": os.environ.get('REDIS_URL', 'redis://localhost:6379'),
+                "retry_on_timeout": True,
+                "socket_connect_timeout": 5,
+                "socket_timeout": 5,
+                "health_check_interval": 10,
+            }],
+            "capacity": 500,
+            "expiry": 30,
+            "group_expiry": 60,
         },
     },
 }

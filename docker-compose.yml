@@ -11,12 +11,21 @@ services:
   # Managed via pgAdmin: http://46.62.216.158:5050
   # PgBouncer REMOVED - Direct connection to PostgreSQL for stability
 
-  # Redis for Caching and Celery - Optimized for faster updates
+  # Redis for Caching and Celery - Optimized for faster updates with persistence
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --tcp-backlog 511
+    command: >
+      redis-server 
+      --appendonly yes 
+      --maxmemory 256mb 
+      --maxmemory-policy allkeys-lru 
+      --tcp-backlog 511
+      --tcp-keepalive 60
+      --timeout 0
+      --save ""
+      --stop-writes-on-bgsave-error no
     volumes:
       - redis_data:/data
     deploy:
@@ -26,9 +35,11 @@ services:
           memory: 256M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: always
 
   # Backend Replica 1 (Only one for 4GB RAM)
   backend1: &backend-service
