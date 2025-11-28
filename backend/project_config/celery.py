@@ -64,6 +64,10 @@ app.conf.beat_schedule = {
         'task': 'check_and_expire_plans',
         'schedule': 86400.0,  # Run once per day (24 hours) - downgrades expired users
     },
+    'cleanup-delisted-symbols-every-6-hours': {
+        'task': 'core.tasks.cleanup_delisted_symbols_task',
+        'schedule': 21600.0,  # Run every 6 hours - removes delisted/non-trading symbols from DB
+    },
 }
 
 app.conf.timezone = 'UTC'
