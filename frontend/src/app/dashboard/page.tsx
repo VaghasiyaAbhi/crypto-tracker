@@ -157,6 +157,8 @@ export default function DashboardPage() {
   const socketRef = useRef<WebSocket | null>(null);
   const dataBatchRef = useRef<Map<string, CryptoData>>(new Map());
   const baseCurrencyRef = useRef<string>(baseCurrency); // ✨ Ref to track current currency for WebSocket handler
+  const itemCountRef = useRef<string>(itemCount); // ✨ Ref to track itemCount for interval
+  const isPremiumRef = useRef<boolean>(isPremium); // ✨ Ref to track premium status for interval
   const snapshotAccumRef = useRef<{ chunks: number; total: number; buffer: Map<string, CryptoData> } | null>(null);
   const isMountedRef = useRef<boolean>(true); // Track if component is mounted
   
@@ -365,6 +367,15 @@ export default function DashboardPage() {
     // Clear price changes for next cycle
     setTimeout(() => setPriceChanges({}), 1000);
   }, [triggerBlink, visibleColumns]);
+
+  // Keep refs in sync with state values (for use in intervals without restarting them)
+  useEffect(() => {
+    itemCountRef.current = itemCount;
+  }, [itemCount]);
+
+  useEffect(() => {
+    isPremiumRef.current = isPremium;
+  }, [isPremium]);
 
   // Request data when itemCount changes (WebSocket-only)
   useEffect(() => {
@@ -780,7 +791,7 @@ export default function DashboardPage() {
     // Premium users: auto-refresh data every 10 seconds
     // Free users: countdown runs but they need to click refresh button manually
 
-    console.log('🔄 Auto-refresh countdown started - isPremium:', isPremium, 'WebSocket ready:', isWebSocketReady);
+    console.log('🔄 Auto-refresh countdown started');
 
     // Run countdown for all users every 1 second
     const interval = setInterval(() => {
@@ -790,24 +801,29 @@ export default function DashboardPage() {
         
         // When countdown reaches 0, trigger update and reset
         if (nextValue <= 0) {
-          console.log('⏰ Countdown reached 0 - isPremium:', isPremium, 'WebSocket OPEN:', socketRef.current?.readyState === WebSocket.OPEN, 'Current currency:', baseCurrencyRef.current);
+          // Use refs to get latest values without restarting the interval
+          const currentIsPremium = isPremiumRef.current;
+          const currentItemCount = itemCountRef.current;
+          const currentCurrency = baseCurrencyRef.current;
+          
+          console.log('⏰ Countdown reached 0 - isPremium:', currentIsPremium, 'WebSocket OPEN:', socketRef.current?.readyState === WebSocket.OPEN, 'Current currency:', currentCurrency);
           
           // Update last update time
           setLastUpdateTime(new Date().toLocaleTimeString());
           
           // ONLY premium users get automatic data refresh
-          if (isPremium && socketRef.current?.readyState === WebSocket.OPEN) {
-            const pageSize = itemCount === 'All' ? 500 : Math.min(parseInt(itemCount), 100);
-            console.log('🚀 Sending refresh request - pageSize:', pageSize, 'currency:', baseCurrencyRef.current);
+          if (currentIsPremium && socketRef.current?.readyState === WebSocket.OPEN) {
+            const pageSize = currentItemCount === 'All' ? 500 : Math.min(parseInt(currentItemCount), 100);
+            console.log('🚀 Sending refresh request - pageSize:', pageSize, 'currency:', currentCurrency);
             socketRef.current.send(JSON.stringify({
               type: 'request_snapshot',
               sort_by: 'profit',
               sort_order: 'desc',
               page_size: pageSize,
-              quote_currency: baseCurrencyRef.current // ✨ Use ref instead of closure variable!
+              quote_currency: currentCurrency
             }));
           } else {
-            if (!isPremium) {
+            if (!currentIsPremium) {
               console.log('⛔ Auto-refresh skipped - User is not premium');
             }
             if (socketRef.current?.readyState !== WebSocket.OPEN) {
@@ -862,7 +878,8 @@ export default function DashboardPage() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isPremium, itemCount, detectAndAnimateChanges, baseCurrency]); // Removed isWebSocketReady to prevent restart on reconnect
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detectAndAnimateChanges]); // Only restart if detectAndAnimateChanges changes (visibleColumns)
 
   // Refresh data when currency changes
   useEffect(() => {
