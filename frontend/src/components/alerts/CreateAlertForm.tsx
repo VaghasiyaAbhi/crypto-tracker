@@ -304,8 +304,8 @@ export default function CreateAlertForm({ telegramConnected, onAlertCreated }: C
           {/* Timeframe Selection */}
           <div className="space-y-2">
             <Label htmlFor="timeframe">Timeframe</Label>
-            <Select value={timeframe} onValueChange={(value: string) => setTimeframe(value as TimeFrame)}>
-              <SelectTrigger>
+            <Select value={timeframe} onValueChange={(value: string) => setTimeframe(value as TimeFrame)} name="timeframe">
+              <SelectTrigger id="timeframe">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

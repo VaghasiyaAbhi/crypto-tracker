@@ -1191,8 +1191,9 @@ export default function DashboardPage() {
                   setBaseCurrency(value);
                 }} 
                 value={baseCurrency}
+                name="currency-selector"
               >
-                <SelectTrigger className="w-full sm:w-[180px] bg-white font-semibold">
+                <SelectTrigger id="currency-selector" className="w-full sm:w-[180px] bg-white font-semibold">
                   <SelectValue placeholder="Select Currency" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1204,8 +1205,8 @@ export default function DashboardPage() {
                 </SelectContent>
               </Select>
               
-              <Select onValueChange={setItemCount} value={itemCount}>
-                <SelectTrigger className="w-full sm:w-[100px] bg-white">
+              <Select onValueChange={setItemCount} value={itemCount} name="item-count">
+                <SelectTrigger id="item-count" className="w-full sm:w-[100px] bg-white">
                   <SelectValue placeholder="Count" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1219,11 +1220,14 @@ export default function DashboardPage() {
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
+                  id="search-crypto"
+                  name="search-crypto"
                   type="text"
                   placeholder="Search..."
                   className="pl-10 w-full bg-white rounded-md border-gray-300 focus:ring-2 focus:ring-indigo-200"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  autoComplete="off"
                 />
               </div>
               {isPremium ? (
@@ -1375,21 +1379,24 @@ export default function DashboardPage() {
                                     <div className="flex items-center border-b pb-2 mb-2">
                                       <Search className="h-4 w-4 mr-2 text-gray-400" />
                                       <Input
+                                        id="symbol-search"
+                                        name="symbol-search"
                                         placeholder="Search symbols..."
                                         value={symbolSearch}
                                         onChange={(e) => setSymbolSearch(e.target.value)}
                                         className="h-8 text-sm"
+                                        autoComplete="off"
                                       />
                                     </div>
                                     <div className="max-h-60 overflow-y-auto">
                                       {filteredSymbols.map(symbol => (
                                         <div key={symbol} className="flex items-center space-x-2 p-1">
                                           <Checkbox
-                                            id={symbol}
+                                            id={`symbol-${symbol}`}
                                             checked={symbolFilter.includes(symbol)}
                                             onCheckedChange={() => handleSymbolFilterChange(symbol)}
                                           />
-                                          <label htmlFor={symbol} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                          <label htmlFor={`symbol-${symbol}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                                             {symbol}
                                           </label>
                                         </div>
