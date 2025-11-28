@@ -1897,6 +1897,7 @@ def fetch_binance_data_task(self):
     - Calculates actual percentage changes from historical prices
     - Uses real volume data instead of estimates
     - Processes ALL currencies (USDT, USDC, FDUSD, BNB, BTC)
+    - IMPORTANT: Only processes ACTIVELY TRADING symbols (filters out delisted/BREAK status)
     """
     try:
         from django.db import transaction
@@ -1905,17 +1906,44 @@ def fetch_binance_data_task(self):
         
         logger.info("🚀 Starting REAL BINANCE DATA FETCH with klines API")
         
+        # Step 1: Fetch exchangeInfo to get ONLY actively trading symbols
+        try:
+            exchange_info_response = requests.get('https://api.binance.com/api/v3/exchangeInfo', timeout=30)
+            exchange_info_response.raise_for_status()
+            exchange_info = exchange_info_response.json()
+            
+            # Build set of actively trading symbols
+            active_trading_symbols = set()
+            for symbol_info in exchange_info.get('symbols', []):
+                if symbol_info.get('status') == 'TRADING':
+                    active_trading_symbols.add(symbol_info['symbol'])
+            
+            logger.info(f"📋 Found {len(active_trading_symbols)} actively trading symbols from exchangeInfo")
+        except Exception as e:
+            logger.error(f"Failed to fetch exchangeInfo: {e}. Proceeding without filter (fallback).")
+            active_trading_symbols = None  # Will skip the filter
+        
         # Fetch 24hr ticker data to get symbols list
         ticker_data = realtime_fetcher.fetch_ticker_24hr()
         
-        # Filter for ALL quote currencies with volume
+        # Filter for ALL quote currencies with volume AND actively trading status
         valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC']
-        all_pairs = [item['symbol'] for item in ticker_data 
-                     if any(item['symbol'].endswith(currency) for currency in valid_currencies)
-                     and float(item.get('quoteVolume', 0)) > 1000]
+        all_pairs = []
+        for item in ticker_data:
+            symbol = item['symbol']
+            # Check if symbol ends with valid currency
+            if not any(symbol.endswith(currency) for currency in valid_currencies):
+                continue
+            # Check volume threshold
+            if float(item.get('quoteVolume', 0)) <= 1000:
+                continue
+            # IMPORTANT: Only include actively trading symbols
+            if active_trading_symbols is not None and symbol not in active_trading_symbols:
+                continue
+            all_pairs.append(symbol)
         
         total_symbols = len(all_pairs)
-        logger.info(f'📊 Processing {total_symbols} symbols with REAL historical klines data')
+        logger.info(f'📊 Processing {total_symbols} ACTIVELY TRADING symbols with REAL historical klines data')
         
         # Process in smaller batches to respect rate limits
         batch_size = 30  # Smaller batches for klines API rate limits (Binance: 1200 req/min)
@@ -1999,6 +2027,73 @@ def fetch_binance_data_task(self):
         logger.error(f"❌ Optimized batch processor failed: {exc}")
         if self.request.retries < self.max_retries:
             raise self.retry(countdown=10, exc=exc)
+        raise exc
+
+
+@shared_task(bind=True, max_retries=2)
+def cleanup_delisted_symbols_task(self):
+    """
+    🧹 CLEANUP TASK: Removes delisted/non-trading symbols from database
+    
+    This task fetches the current list of actively trading symbols from Binance
+    and removes any CryptoData entries that are no longer trading.
+    
+    Run this periodically (e.g., daily) to keep the database clean.
+    """
+    try:
+        logger.info("🧹 Starting cleanup of delisted/non-trading symbols")
+        
+        # Fetch exchangeInfo to get list of actively trading symbols
+        exchange_info_response = requests.get('https://api.binance.com/api/v3/exchangeInfo', timeout=30)
+        exchange_info_response.raise_for_status()
+        exchange_info = exchange_info_response.json()
+        
+        # Build set of actively trading symbols
+        active_trading_symbols = set()
+        for symbol_info in exchange_info.get('symbols', []):
+            if symbol_info.get('status') == 'TRADING':
+                active_trading_symbols.add(symbol_info['symbol'])
+        
+        logger.info(f"📋 Found {len(active_trading_symbols)} actively trading symbols")
+        
+        # Get all symbols currently in database
+        db_symbols = set(CryptoData.objects.values_list('symbol', flat=True))
+        logger.info(f"📊 Found {len(db_symbols)} symbols in database")
+        
+        # Find symbols to delete (in DB but not actively trading)
+        symbols_to_delete = db_symbols - active_trading_symbols
+        
+        if symbols_to_delete:
+            # Log which symbols are being deleted
+            logger.info(f"🗑️ Removing {len(symbols_to_delete)} delisted symbols: {list(symbols_to_delete)[:20]}...")
+            
+            # Delete in batches to avoid long locks
+            deleted_count = 0
+            for symbol in symbols_to_delete:
+                try:
+                    CryptoData.objects.filter(symbol=symbol).delete()
+                    deleted_count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete {symbol}: {e}")
+            
+            logger.info(f"✅ Cleanup complete: Removed {deleted_count} delisted symbols")
+            return {
+                'status': 'success',
+                'deleted_count': deleted_count,
+                'symbols_deleted': list(symbols_to_delete)
+            }
+        else:
+            logger.info("✅ No delisted symbols found - database is clean")
+            return {
+                'status': 'success',
+                'deleted_count': 0,
+                'message': 'No delisted symbols found'
+            }
+        
+    except Exception as exc:
+        logger.error(f"❌ Cleanup task failed: {exc}")
+        if self.request.retries < self.max_retries:
+            raise self.retry(countdown=60, exc=exc)
         raise exc
 
 
@@ -2260,11 +2355,29 @@ def fetch_all_binance_symbols_task(self):
     """
     Coordinator task to fetch ALL crypto symbols from Binance API
     Distributes the work across multiple calculation workers
+    IMPORTANT: Only processes ACTIVELY TRADING symbols (filters out delisted/BREAK status)
     """
     try:
         import requests
         
         logger.info("Starting Binance ALL symbols fetch")
+        
+        # Step 1: Fetch exchangeInfo to get ONLY actively trading symbols
+        try:
+            exchange_info_response = requests.get('https://api.binance.com/api/v3/exchangeInfo', timeout=30)
+            exchange_info_response.raise_for_status()
+            exchange_info = exchange_info_response.json()
+            
+            # Build set of actively trading symbols
+            active_trading_symbols = set()
+            for symbol_info in exchange_info.get('symbols', []):
+                if symbol_info.get('status') == 'TRADING':
+                    active_trading_symbols.add(symbol_info['symbol'])
+            
+            logger.info(f"📋 Found {len(active_trading_symbols)} actively trading symbols from exchangeInfo")
+        except Exception as e:
+            logger.error(f"Failed to fetch exchangeInfo: {e}. Proceeding without filter (fallback).")
+            active_trading_symbols = None  # Will skip the filter
         
         # Fetch ALL trading pairs from Binance
         url = 'https://api.binance.com/api/v3/ticker/24hr'
@@ -2272,9 +2385,14 @@ def fetch_all_binance_symbols_task(self):
         response.raise_for_status()
         
         data = response.json()
-        all_symbols = data  # Get ALL symbols, not just USDT pairs
         
-        logger.info(f'Fetched {len(all_symbols)} total symbols from Binance')
+        # Filter to only include ACTIVELY TRADING symbols
+        if active_trading_symbols is not None:
+            all_symbols = [item for item in data if item['symbol'] in active_trading_symbols]
+            logger.info(f'Filtered to {len(all_symbols)} actively trading symbols (from {len(data)} total)')
+        else:
+            all_symbols = data
+            logger.info(f'Fetched {len(all_symbols)} total symbols from Binance (no filter applied)')
         
         # Split symbols into smaller chunks of 25 for memory efficiency
         chunk_size = 25
