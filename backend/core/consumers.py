@@ -196,16 +196,32 @@ class CryptoConsumer(AsyncWebsocketConsumer):
     def _sync_fetch_live_data(self, quote_currency: str, page_size: int):
         """Synchronous helper to fetch live data from Binance"""
         try:
+            # Step 0: Get active trading symbols from exchangeInfo (filter out delisted/BREAK status)
+            exchange_info_response = requests.get('https://api.binance.com/api/v3/exchangeInfo', timeout=15)
+            exchange_info_response.raise_for_status()
+            exchange_info = exchange_info_response.json()
+            
+            # Build set of actively trading symbols
+            active_trading_symbols = set()
+            for symbol_info in exchange_info.get('symbols', []):
+                if symbol_info.get('status') == 'TRADING':
+                    active_trading_symbols.add(symbol_info['symbol'])
+            
+            logger.info(f"📊 WebSocket: Found {len(active_trading_symbols)} actively trading symbols")
+            
             # Step 1: Fetch 24hr ticker data
             response = requests.get('https://api.binance.com/api/v3/ticker/24hr', timeout=10)
             response.raise_for_status()
             binance_data = response.json()
             
-            # Filter by quote currency and sort by volume
+            # Filter by quote currency, active trading status, and volume
             filtered_data = []
             for item in binance_data:
                 symbol = item.get('symbol', '')
                 if not symbol.endswith(quote_currency):
+                    continue
+                # Skip delisted/non-trading symbols
+                if symbol not in active_trading_symbols:
                     continue
                 quote_volume = float(item.get('quoteVolume', 0))
                 if quote_volume <= 0:
