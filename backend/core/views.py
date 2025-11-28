@@ -846,14 +846,28 @@ class ManualRefreshView(APIView):
                     # 2 minutes ago
                     if len(klines) >= 3:
                         m2_price = float(klines[-3][4])
+                        m2_volume = sum(float(klines[i][7]) for i in range(-2, 0))
                         metrics['m2'] = round(((current_price - m2_price) / m2_price) * 100, 4) if m2_price > 0 else 0
                         metrics['m2_r_pct'] = metrics['m2']
+                        metrics['m2_vol'] = round(m2_volume, 2)
+                        m2_highs = [float(klines[i][2]) for i in range(-2, 0)]
+                        m2_lows = [float(klines[i][3]) for i in range(-2, 0)]
+                        metrics['m2_low'] = min(m2_lows)
+                        metrics['m2_high'] = max(m2_highs)
+                        metrics['m2_range_pct'] = round(((max(m2_highs) - min(m2_lows)) / min(m2_lows)) * 100, 4) if min(m2_lows) > 0 else 0
                     
                     # 3 minutes ago
                     if len(klines) >= 4:
                         m3_price = float(klines[-4][4])
+                        m3_volume = sum(float(klines[i][7]) for i in range(-3, 0))
                         metrics['m3'] = round(((current_price - m3_price) / m3_price) * 100, 4) if m3_price > 0 else 0
                         metrics['m3_r_pct'] = metrics['m3']
+                        metrics['m3_vol'] = round(m3_volume, 2)
+                        m3_highs = [float(klines[i][2]) for i in range(-3, 0)]
+                        m3_lows = [float(klines[i][3]) for i in range(-3, 0)]
+                        metrics['m3_low'] = min(m3_lows)
+                        metrics['m3_high'] = max(m3_highs)
+                        metrics['m3_range_pct'] = round(((max(m3_highs) - min(m3_lows)) / min(m3_lows)) * 100, 4) if min(m3_lows) > 0 else 0
                     
                     # 5 minutes ago
                     if len(klines) >= 6:
@@ -912,6 +926,10 @@ class ManualRefreshView(APIView):
                     if total_vol_24h > 0:
                         if 'm1_vol' in metrics:
                             metrics['m1_vol_pct'] = round((metrics['m1_vol'] / total_vol_24h) * 100, 4)
+                        if 'm2_vol' in metrics:
+                            metrics['m2_vol_pct'] = round((metrics['m2_vol'] / total_vol_24h) * 100, 4)
+                        if 'm3_vol' in metrics:
+                            metrics['m3_vol_pct'] = round((metrics['m3_vol'] / total_vol_24h) * 100, 4)
                         if 'm5_vol' in metrics:
                             metrics['m5_vol_pct'] = round((metrics['m5_vol'] / total_vol_24h) * 100, 4)
                         if 'm10_vol' in metrics:
