@@ -18,6 +18,7 @@ from .views import (
     MetricsView,
     CoinSymbolsView,
     ManualRefreshView,
+    TestLoginView,
 )
 from .telegram_views import (
     telegram_webhook,
@@ -39,6 +40,10 @@ urlpatterns = [
     path('login-with-token/', LoginWithTokenView.as_view(), name='login_with_token'),
     path('google-login/', GoogleLoginView.as_view(), name='google_login'),
     path('firebase-test/', FirebaseTestView.as_view(), name='firebase_test'),
+    
+    # Test login endpoint for load testing (no auth required for test users)
+    path('test-login/', TestLoginView.as_view(), name='test_login'),
+    
     re_path(r'activate/(?P<token>[0-9a-f-]+)/$', ActivateAccountView.as_view(), name='activate'),
     path('binance-data/', BinanceDataView.as_view(), name='binance-data'),
     path('manual-refresh/', ManualRefreshView.as_view(), name='manual-refresh'),

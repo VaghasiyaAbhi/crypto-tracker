@@ -62,6 +62,65 @@ stripe_price_ids = {
     'enterprise': os.environ.get('STRIPE_PRICE_ID_ENTERPRISE'),
 }
 
+# Test user emails that can bypass authentication (for load testing)
+TEST_USER_EMAILS = [
+    'testuser1@volusignal.com', 'testuser2@volusignal.com', 'testuser3@volusignal.com',
+    'testuser4@volusignal.com', 'testuser5@volusignal.com', 'testuser6@volusignal.com',
+    'testuser7@volusignal.com', 'testuser8@volusignal.com', 'testuser9@volusignal.com',
+    'testuser10@volusignal.com', 'testuser11@volusignal.com', 'testuser12@volusignal.com',
+    'testuser13@volusignal.com', 'testuser14@volusignal.com', 'testuser15@volusignal.com',
+]
+
+
+class TestLoginView(APIView):
+    """
+    Test login endpoint for load testing purposes.
+    Allows test users to login without email verification.
+    Only works for predefined test email addresses.
+    """
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        email = request.data.get('email', '').lower().strip()
+        
+        if not email:
+            return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Only allow test user emails
+        if email not in TEST_USER_EMAILS:
+            logger.warning(f"Test login attempt with non-test email: {email}")
+            return Response(
+                {'error': 'Invalid test user email. Only authorized test accounts can use this endpoint.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            user = User.objects.get(email=email)
+            
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+            
+            logger.info(f"Test user logged in: {email}")
+            
+            return Response({
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'email': user.email,
+                'subscription_plan': user.subscription_plan,
+                'is_premium_user': user.is_premium_user,
+                'message': 'Test login successful'
+            }, status=status.HTTP_200_OK)
+            
+        except User.DoesNotExist:
+            return Response(
+                {'error': f'Test user {email} not found. Run: python manage.py create_test_users'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
 class RegisterView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
