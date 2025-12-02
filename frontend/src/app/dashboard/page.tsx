@@ -1001,12 +1001,11 @@ export default function DashboardPage() {
       filteredData = filteredData.filter(crypto => symbolFilter.includes(crypto.symbol));
     }
 
-    // For new sessions or when user manually sorts, apply fresh sorting
-    if (isNewSession || sortConfig) {
-      if (sortConfig) {
-        filteredData.sort((a, b) => {
-          const aValue = a[sortConfig.key];
-          const bValue = b[sortConfig.key];
+    // Always apply sorting when sortConfig exists
+    if (sortConfig) {
+      filteredData.sort((a, b) => {
+        const aValue = a[sortConfig.key];
+        const bValue = b[sortConfig.key];
           
           // Helper function to check if value should be treated as "empty"
           // Note: 0 is a VALID value for prices/percentages, don't treat it as empty
@@ -1059,38 +1058,13 @@ export default function DashboardPage() {
           }
           return 0;
         });
-      }
-
-      // Store the session order after sorting
-      const newOrder = filteredData.map(item => item.symbol);
-      if (JSON.stringify(newOrder) !== JSON.stringify(sessionSortOrder)) {
-        setSessionSortOrder(newOrder);
-        setIsNewSession(false);
-      }
-    } else {
-      // For existing sessions, maintain the session order while allowing data updates
-      // Sort by session order, then by symbol as fallback for new symbols
-      filteredData.sort((a, b) => {
-        const aIndex = sessionSortOrder.indexOf(a.symbol);
-        const bIndex = sessionSortOrder.indexOf(b.symbol);
-
-        // Both symbols in session order
-        if (aIndex !== -1 && bIndex !== -1) {
-          return aIndex - bIndex;
-        }
-        // Only a is in session order
-        if (aIndex !== -1) return -1;
-        // Only b is in session order  
-        if (bIndex !== -1) return 1;
-        // Neither in session order, sort by symbol
-        return a.symbol.localeCompare(b.symbol);
-      });
     }
+    
     if (itemCount === 'All') {
       return filteredData;
     }
     return filteredData.slice(0, parseInt(itemCount));
-  }, [cryptoData, sortConfig, baseCurrency, itemCount, searchQuery, symbolFilter, sessionSortOrder, isNewSession]);
+  }, [cryptoData, sortConfig, baseCurrency, itemCount, searchQuery, symbolFilter]);
 
   // Total count of coins for selected currency (not affected by itemCount selection)
   const totalCoinCount = useMemo(() => {
