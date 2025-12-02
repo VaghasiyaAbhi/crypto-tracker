@@ -176,6 +176,7 @@ export default function DashboardPage() {
   const isPremiumRef = useRef<boolean>(getInitialPremiumStatus());
   const snapshotAccumRef = useRef<{ chunks: number; total: number; buffer: Map<string, CryptoData> } | null>(null);
   const isMountedRef = useRef<boolean>(true); // Track if component is mounted
+  const initialLoadCompleteRef = useRef<boolean>(false); // Track if initial data load is complete
   
   // Lazy loading state for virtualization
   const [visibleRowCount, setVisibleRowCount] = useState<number>(50); // Start with 50 rows
@@ -603,14 +604,12 @@ export default function DashboardPage() {
         // Always connect WebSocket for both free and paid users
         connectWebSocket(user.access_token);
 
-        // Safety timeout: Stop loading after 10 seconds even if no data arrives
+        // Safety timeout: Stop loading after 10 seconds even if no data arrives (only for initial load)
         setTimeout(() => {
-          if (isMountedRef.current && loading) {
-            console.warn('⏱️ Loading timeout reached - stopping loading spinner');
+          if (isMountedRef.current && !initialLoadCompleteRef.current) {
+            console.warn('⏱️ Initial loading timeout reached - stopping loading spinner');
             setLoading(false);
-            if (cryptoData.length === 0) {
-              setError('Unable to load data. Please check your internet connection and refresh the page.');
-            }
+            setError('Unable to load data. Please check your internet connection and refresh the page.');
           }
         }, 10000);
 
@@ -752,6 +751,9 @@ export default function DashboardPage() {
                 return [...updated, ...newSymbols];
               });
               
+              // Mark initial load as complete (prevents timeout error)
+              initialLoadCompleteRef.current = true;
+              setError(null); // Clear any errors
               setIsRefreshing(false);
               setLoading(false); // Stop loading spinner once WebSocket data arrives
             }
@@ -988,9 +990,10 @@ export default function DashboardPage() {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       console.log('💱 Currency changed to:', baseCurrency, '- requesting from WebSocket');
       
-      // CLEAR OLD DATA IMMEDIATELY when currency changes
+      // CLEAR OLD DATA AND ERROR STATE when currency changes
       setCryptoData([]);
       setAllCryptoData([]); // Clear all data for new currency
+      setError(null); // Clear any previous errors
       setLoading(true); // Show loading state while fetching new currency data
       
       // Clear any accumulated snapshot data
