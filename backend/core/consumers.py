@@ -118,12 +118,15 @@ class CryptoConsumer(AsyncWebsocketConsumer):
         if msg_type == 'request_snapshot':
             sort_by = message.get('sort_by', 'profit')
             sort_order = message.get('sort_order', 'desc')
-            # Get quote currency preference (USDT, USDC, FDUSD, BNB, BTC)
+            # Get quote currency preference (USDT, USDC, FDUSD, BNB, BTC, or ALL)
             quote_currency = message.get('quote_currency', 'USDT').upper()
-            # Validate quote currency
-            valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC']
+            # Validate quote currency - support 'ALL' for fetching all currencies at once
+            valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC', 'ALL']
             if quote_currency not in valid_currencies:
                 quote_currency = 'USDT'
+            
+            # If 'ALL', fetch all currencies for instant client-side filtering
+            fetch_all_currencies = (quote_currency == 'ALL')
             
             page_size = int(message.get('page_size') or 100)
             
@@ -150,12 +153,18 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 serializer_class = CryptoDataFreeSerializer
 
             # Send cached data immediately (fast)
-            total_count = await database_sync_to_async(
-                lambda: CryptoData.objects.filter(symbol__endswith=quote_currency).count()
-            )()
+            # If fetching ALL currencies, don't filter by quote_currency
+            if fetch_all_currencies:
+                total_count = await database_sync_to_async(
+                    lambda: CryptoData.objects.count()
+                )()
+                data_chunk = await self._get_snapshot_chunk_all(serializer_class, sort_field, 0, min(page_size, 2000))
+            else:
+                total_count = await database_sync_to_async(
+                    lambda: CryptoData.objects.filter(symbol__endswith=quote_currency).count()
+                )()
+                data_chunk = await self._get_snapshot_chunk(serializer_class, sort_field, 0, min(page_size, 1000), quote_currency)
             
-            # Send all data in one chunk for speed
-            data_chunk = await self._get_snapshot_chunk(serializer_class, sort_field, 0, min(page_size, 1000), quote_currency)
             await self.send(text_data=json.dumps({
                 'type': 'snapshot',
                 'chunk': 1,
@@ -167,12 +176,12 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             }, cls=DecimalEncoder))
             
             # For premium users, fetch live updates in background (non-blocking)
-            if user_plan in ['basic', 'enterprise']:
-                # Start background task to fetch live data
+            if user_plan in ['basic', 'enterprise'] and not fetch_all_currencies:
+                # Start background task to fetch live data (only for single currency)
                 logger.info(f"🚀 Starting live_update background task for {user_plan} user")
                 asyncio.create_task(self._send_live_update(quote_currency, min(page_size, 500)))
             else:
-                logger.info(f"⏭️ Skipping live_update for {user_plan} user (not premium)")
+                logger.info(f"⏭️ Skipping live_update for {user_plan} user (fetch_all={fetch_all_currencies})")
 
     async def _send_live_update(self, quote_currency: str, page_size: int):
         """Fetch live data from Binance and send as update (background task)"""
@@ -402,6 +411,18 @@ class CryptoConsumer(AsyncWebsocketConsumer):
     def _get_snapshot_chunk(self, serializer_class, sort_field: str, offset: int, limit: int, quote_currency: str = 'USDT'):
         # Filter to pairs with selected quote currency
         qs = CryptoData.objects.filter(symbol__endswith=quote_currency).order_by(sort_field)[offset:offset + limit]
+        return serializer_class(qs, many=True).data
+
+    @database_sync_to_async
+    def _get_snapshot_chunk_all(self, serializer_class, sort_field: str, offset: int, limit: int):
+        """Get all currency pairs (USDT, USDC, FDUSD, BNB, BTC) in one query for instant client-side filtering"""
+        from django.db.models import Q
+        # Filter to only valid quote currencies
+        valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC']
+        q_filter = Q()
+        for currency in valid_currencies:
+            q_filter |= Q(symbol__endswith=currency)
+        qs = CryptoData.objects.filter(q_filter).order_by(sort_field)[offset:offset + limit]
         return serializer_class(qs, many=True).data
 
     async def _heartbeat(self):
