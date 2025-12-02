@@ -993,6 +993,7 @@ export default function DashboardPage() {
     let filteredData = base
       .filter(crypto =>
         crypto.symbol &&
+        crypto.symbol.endsWith(baseCurrency) && // Only show symbols matching selected currency
         crypto.symbol.toLowerCase().includes(searchQuery.toLowerCase())
       );
 
@@ -1073,8 +1074,11 @@ export default function DashboardPage() {
     const base: CryptoData[] = Array.isArray(cryptoData) ? cryptoData : [];
     return base
       .map(c => c.symbol)
-      .filter(symbol => symbol.toLowerCase().includes(symbolSearch.toLowerCase()));
-  }, [cryptoData, symbolSearch]);
+      .filter(symbol => 
+        symbol.endsWith(baseCurrency) && // Only show symbols matching selected currency
+        symbol.toLowerCase().includes(symbolSearch.toLowerCase())
+      );
+  }, [cryptoData, symbolSearch, baseCurrency]);
   
   // Lazy loading with Intersection Observer
   useEffect(() => {
