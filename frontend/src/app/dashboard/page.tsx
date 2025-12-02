@@ -231,7 +231,7 @@ export default function DashboardPage() {
       }
 
       if (token) {
-        const pageSize = itemCount === 'All' ? 500 : Math.min(parseInt(itemCount), 100);
+        const pageSize = itemCount === 'All' ? 1000 : Math.min(parseInt(itemCount), 100);
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         
         // Call manual-refresh endpoint which fetches LIVE data from Binance
@@ -394,7 +394,7 @@ export default function DashboardPage() {
   // Request data when itemCount changes (WebSocket-only)
   useEffect(() => {
     if (!loading && socketRef.current) {
-      const pageSize = itemCount === 'All' ? 500 : Math.min(parseInt(itemCount), 100);
+      const pageSize = itemCount === 'All' ? 1000 : Math.min(parseInt(itemCount), 100);
       requestWebSocketData(pageSize);
       // Reset session when itemCount changes
       setIsNewSession(true);
@@ -851,7 +851,7 @@ export default function DashboardPage() {
           
           // ONLY premium users get automatic data refresh
           if (currentIsPremium && socketRef.current?.readyState === WebSocket.OPEN) {
-            const pageSize = currentItemCount === 'All' ? 500 : Math.min(parseInt(currentItemCount), 100);
+            const pageSize = currentItemCount === 'All' ? 1000 : Math.min(parseInt(currentItemCount), 100);
             console.log('🚀 Sending refresh request - pageSize:', pageSize, 'currency:', currentCurrency, 'socketState:', socketRef.current?.readyState);
             try {
               socketRef.current.send(JSON.stringify({
@@ -943,7 +943,7 @@ export default function DashboardPage() {
       snapshotAccumRef.current = null;
       dataBatchRef.current.clear();
       
-      const pageSize = itemCount === 'All' ? 500 : Math.min(parseInt(itemCount), 100);
+      const pageSize = itemCount === 'All' ? 1000 : Math.min(parseInt(itemCount), 100);
       socketRef.current.send(JSON.stringify({
         type: 'request_snapshot',
         sort_by: 'profit',
@@ -980,7 +980,7 @@ export default function DashboardPage() {
         type: 'request_snapshot', 
         sort_by: 'profit', 
         sort_order: 'desc', 
-        page_size: 500,
+        page_size: 1000,
         quote_currency: baseCurrency
       }));
     } catch (e: unknown) {
@@ -1009,13 +1009,12 @@ export default function DashboardPage() {
           const bValue = b[sortConfig.key];
           
           // Helper function to check if value should be treated as "empty"
+          // Note: 0 is a VALID value for prices/percentages, don't treat it as empty
           const isEmpty = (val: any) => {
             return val === null || 
                    val === undefined || 
                    val === 'N/A' || 
-                   val === '' || 
-                   val === 0 ||
-                   val === 0.00;
+                   val === '';
           };
           
           const aEmpty = isEmpty(aValue);
@@ -1280,11 +1279,11 @@ export default function DashboardPage() {
               </Select>
               
               <Select onValueChange={setItemCount} value={itemCount} name="item-count">
-                <SelectTrigger id="item-count" className="w-full sm:w-[100px] bg-white">
+                <SelectTrigger id="item-count" className="w-full sm:w-[130px] bg-white">
                   <SelectValue placeholder="Count" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="All">All</SelectItem>
+                  <SelectItem value="All">All ({sortedAndFilteredData.length > 0 ? cryptoData.filter(c => c.symbol?.endsWith(baseCurrency)).length : 0})</SelectItem>
                   <SelectItem value="25">25</SelectItem>
                   <SelectItem value="50">50</SelectItem>
                   <SelectItem value="100">100</SelectItem>

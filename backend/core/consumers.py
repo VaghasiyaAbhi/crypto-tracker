@@ -228,9 +228,10 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                     continue
                 filtered_data.append(item)
             
-            # Sort by 24h price change (most profitable first)
-            filtered_data.sort(key=lambda x: float(x.get('priceChangePercent', 0)), reverse=True)
-            top_symbols = filtered_data[:page_size]
+            # Sort by 24h volume (highest volume first) - better for showing major coins
+            filtered_data.sort(key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
+            # Use page_size up to 1000 to ensure ALL coins are fetched
+            top_symbols = filtered_data[:min(page_size, 1000)]
             
             # Step 2: Fetch klines for top symbols in parallel
             def fetch_klines_for_symbol(ticker_item):
