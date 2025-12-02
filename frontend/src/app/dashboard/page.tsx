@@ -745,6 +745,38 @@ export default function DashboardPage() {
             return;
           }
           
+          // Live update from Binance (premium users) - merge with existing data
+          if (msg?.type === 'live_update') {
+            const items: CryptoData[] = Array.isArray(msg.data) ? msg.data : [];
+            const snapshotCurrency = msg.quote_currency || 'USDT';
+            
+            // Only accept if matches current currency
+            if (snapshotCurrency !== baseCurrencyRef.current) {
+              console.log(`⚠️ Ignoring live_update for ${snapshotCurrency}`);
+              return;
+            }
+            
+            console.log('🔴 Live update received:', items.length, 'items');
+            
+            // Update existing data with live values
+            setCryptoData(prevData => {
+              const liveDataMap = new Map(items.map(item => [item.symbol, item]));
+              
+              // Update existing items with live data
+              const updated = prevData.map(existingItem => {
+                const liveItem = liveDataMap.get(existingItem.symbol);
+                return liveItem || existingItem;
+              });
+              
+              // Add any new symbols from live data
+              const existingSymbols = new Set(prevData.map(item => item.symbol));
+              const newSymbols = items.filter(item => !existingSymbols.has(item.symbol));
+              
+              return [...updated, ...newSymbols];
+            });
+            return;
+          }
+          
           // Delta updates - batch them for 10-second cycles
           if (msg?.type === 'delta') {
             const updatedBatch: CryptoData[] = Array.isArray(msg.data) ? msg.data : [];

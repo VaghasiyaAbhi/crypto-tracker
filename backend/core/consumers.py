@@ -127,25 +127,8 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             
             page_size = int(message.get('page_size') or 100)
             
-            # For premium/enterprise users, fetch LIVE data from Binance
-            user_plan = getattr(self.user, 'subscription_plan', 'free')
-            if user_plan in ['basic', 'enterprise']:
-                # Fetch live Binance data with calculated columns
-                live_data = await self._fetch_live_binance_data(quote_currency, page_size)
-                if live_data:
-                    await self.send(text_data=json.dumps({
-                        'type': 'snapshot',
-                        'chunk': 1,
-                        'total_chunks': 1,
-                        'total_count': len(live_data),
-                        'quote_currency': quote_currency,
-                        'live': True,
-                        'data': live_data,
-                    }, cls=DecimalEncoder))
-                    return
-            
-            # Fallback: fetch from database for free users or if live fetch fails
-            # Determine sorting field similar to REST view
+            # ALWAYS send cached database data first for fast initial load
+            # Determine sorting field
             sort_field = '-price_change_percent_24h'
             if sort_by == 'volume':
                 sort_field = '-quote_volume_24h'
@@ -153,36 +136,54 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 sort_field = '-id'
             elif sort_by == 'price':
                 sort_field = '-last_price'
-            # Apply sort order
             if sort_order == 'asc':
                 sort_field = sort_field.lstrip('-')
 
             # Determine serializer based on plan
-            if getattr(self.user, 'subscription_plan', 'free') == 'enterprise':
+            user_plan = getattr(self.user, 'subscription_plan', 'free')
+            if user_plan == 'enterprise':
                 serializer_class = CryptoDataSerializer
-            elif getattr(self.user, 'subscription_plan', 'free') == 'basic':
+            elif user_plan == 'basic':
                 serializer_class = CryptoDataBasicSerializer
             else:
                 serializer_class = CryptoDataFreeSerializer
 
-            # Chunk and send snapshot to avoid giant frames
-            # Count pairs for selected quote currency
+            # Send cached data immediately (fast)
             total_count = await database_sync_to_async(
                 lambda: CryptoData.objects.filter(symbol__endswith=quote_currency).count()
             )()
-            total_pages = (total_count + page_size - 1) // page_size if page_size > 0 else 1
+            
+            # Send all data in one chunk for speed
+            data_chunk = await self._get_snapshot_chunk(serializer_class, sort_field, 0, min(page_size, 1000), quote_currency)
+            await self.send(text_data=json.dumps({
+                'type': 'snapshot',
+                'chunk': 1,
+                'total_chunks': 1,
+                'total_count': len(data_chunk),
+                'quote_currency': quote_currency,
+                'cached': True,
+                'data': data_chunk,
+            }, cls=DecimalEncoder))
+            
+            # For premium users, fetch live updates in background (non-blocking)
+            if user_plan in ['basic', 'enterprise']:
+                # Start background task to fetch live data
+                asyncio.create_task(self._send_live_update(quote_currency, min(page_size, 500)))
 
-            for page in range(total_pages):
-                offset = page * page_size
-                data_chunk = await self._get_snapshot_chunk(serializer_class, sort_field, offset, page_size, quote_currency)
+    async def _send_live_update(self, quote_currency: str, page_size: int):
+        """Fetch live data from Binance and send as update (background task)"""
+        try:
+            live_data = await self._fetch_live_binance_data(quote_currency, page_size)
+            if live_data:
                 await self.send(text_data=json.dumps({
-                    'type': 'snapshot',
-                    'chunk': page + 1,
-                    'total_chunks': total_pages,
-                    'total_count': total_count,
+                    'type': 'live_update',
+                    'total_count': len(live_data),
                     'quote_currency': quote_currency,
-                    'data': data_chunk,
+                    'live': True,
+                    'data': live_data,
                 }, cls=DecimalEncoder))
+        except Exception as e:
+            logger.error(f"Failed to send live update: {e}")
 
     async def _fetch_live_binance_data(self, quote_currency: str, page_size: int):
         """Fetch LIVE data from Binance API with calculated columns using klines"""
