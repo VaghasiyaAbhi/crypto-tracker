@@ -1114,10 +1114,15 @@ export default function DashboardPage() {
     };
   }, [sortedAndFilteredData.length, visibleRowCount, isLoadingMore]);
   
-  // Reset visible rows when filters or sorting change
+  // Reset visible rows when filters, sorting, or item count changes
   useEffect(() => {
-    setVisibleRowCount(50);
-  }, [searchQuery, symbolFilter, sortConfig]);
+    // When itemCount changes, set visibleRowCount to match
+    if (itemCount === 'All') {
+      setVisibleRowCount(sortedAndFilteredData.length || 50);
+    } else {
+      setVisibleRowCount(parseInt(itemCount));
+    }
+  }, [searchQuery, symbolFilter, sortConfig, itemCount, sortedAndFilteredData.length]);
 
   const requestSort = (key: keyof CryptoData) => {
     let direction: 'ascending' | 'descending' = 'descending';
