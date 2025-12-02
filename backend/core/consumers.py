@@ -178,8 +178,11 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             # For premium users, fetch live updates in background (non-blocking)
             if user_plan in ['basic', 'enterprise'] and not fetch_all_currencies:
                 # Start background task to fetch live data (only for single currency)
-                logger.info(f"🚀 Starting live_update background task for {user_plan} user")
-                asyncio.create_task(self._send_live_update(quote_currency, min(page_size, 500)))
+                # IMPORTANT: Always fetch enough symbols for proper live updates
+                # For BTC/BNB, we need more symbols due to lower volume thresholds
+                live_page_size = 500  # Always fetch up to 500 symbols for live updates
+                logger.info(f"🚀 Starting live_update background task for {user_plan} user (currency: {quote_currency}, live_page_size: {live_page_size})")
+                asyncio.create_task(self._send_live_update(quote_currency, live_page_size))
             else:
                 logger.info(f"⏭️ Skipping live_update for {user_plan} user (fetch_all={fetch_all_currencies})")
 

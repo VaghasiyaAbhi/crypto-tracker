@@ -233,7 +233,8 @@ export default function DashboardPage() {
       }
 
       if (token) {
-        const pageSize = itemCount === 'All' ? 1000 : Math.min(parseInt(itemCount), 100);
+        // Always request 500+ symbols for complete data coverage
+        const pageSize = itemCount === 'All' ? 1000 : 500;
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         
         // Call manual-refresh endpoint which fetches LIVE data from Binance
@@ -396,7 +397,9 @@ export default function DashboardPage() {
   // Request data when itemCount changes (WebSocket-only)
   useEffect(() => {
     if (!loading && socketRef.current) {
-      const pageSize = itemCount === 'All' ? 1000 : Math.min(parseInt(itemCount), 100);
+      // Always request 500+ symbols to ensure we have complete data
+      // Frontend will filter/paginate as needed based on itemCount
+      const pageSize = itemCount === 'All' ? 1000 : 500;
       requestWebSocketData(pageSize);
       // Reset session when itemCount changes
       setIsNewSession(true);
@@ -905,7 +908,9 @@ export default function DashboardPage() {
           
           // ONLY premium users get automatic data refresh
           if (currentIsPremium && socketRef.current?.readyState === WebSocket.OPEN) {
-            const pageSize = currentItemCount === 'All' ? 1000 : Math.min(parseInt(currentItemCount), 100);
+            // Always request enough symbols (500) to get complete data for all currencies
+            // The backend will send live updates for all actively traded symbols
+            const pageSize = currentItemCount === 'All' ? 1000 : 500;
             console.log('🚀 Sending refresh request - pageSize:', pageSize, 'currency:', currentCurrency, 'socketState:', socketRef.current?.readyState);
             try {
               socketRef.current.send(JSON.stringify({
