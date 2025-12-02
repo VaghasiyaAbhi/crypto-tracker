@@ -1069,6 +1069,12 @@ export default function DashboardPage() {
     return filteredData.slice(0, parseInt(itemCount));
   }, [cryptoData, sortConfig, baseCurrency, itemCount, searchQuery, symbolFilter, sessionSortOrder, isNewSession]);
 
+  // Total count of coins for selected currency (not affected by itemCount selection)
+  const totalCoinCount = useMemo(() => {
+    const base: CryptoData[] = Array.isArray(cryptoData) ? cryptoData : [];
+    return base.filter(c => c.symbol?.endsWith(baseCurrency)).length;
+  }, [cryptoData, baseCurrency]);
+
   const filteredSymbols = useMemo(() => {
     const base: CryptoData[] = Array.isArray(cryptoData) ? cryptoData : [];
     return base
@@ -1088,17 +1094,17 @@ export default function DashboardPage() {
           const totalRows = sortedAndFilteredData.length;
           if (visibleRowCount < totalRows) {
             setIsLoadingMore(true);
-            // Load 50 more rows
+            // Load 100 more rows quickly
             setTimeout(() => {
-              setVisibleRowCount(prev => Math.min(prev + 50, totalRows));
+              setVisibleRowCount(prev => Math.min(prev + 100, totalRows));
               setIsLoadingMore(false);
-            }, 100);
+            }, 50);
           }
         }
       },
       {
         root: tableContainerRef.current,
-        rootMargin: '200px', // Start loading 200px before reaching bottom
+        rootMargin: '400px', // Start loading 400px before reaching bottom for smoother experience
         threshold: 0.1
       }
     );
@@ -1116,12 +1122,10 @@ export default function DashboardPage() {
   
   // Reset visible rows when filters, sorting, or item count changes
   useEffect(() => {
-    // When itemCount changes, set visibleRowCount to match
-    if (itemCount === 'All') {
-      setVisibleRowCount(sortedAndFilteredData.length || 50);
-    } else {
-      setVisibleRowCount(parseInt(itemCount));
-    }
+    // Start with a reasonable number for performance, then lazy load more
+    const targetCount = itemCount === 'All' ? sortedAndFilteredData.length : parseInt(itemCount);
+    // Start with 50 rows max initially for fast rendering, lazy load the rest
+    setVisibleRowCount(Math.min(targetCount, 50));
   }, [searchQuery, symbolFilter, sortConfig, itemCount, sortedAndFilteredData.length]);
 
   const requestSort = (key: keyof CryptoData) => {
@@ -1288,7 +1292,7 @@ export default function DashboardPage() {
                   <SelectValue placeholder="Count" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="All">All ({sortedAndFilteredData.length > 0 ? cryptoData.filter(c => c.symbol?.endsWith(baseCurrency)).length : 0})</SelectItem>
+                  <SelectItem value="All">All ({totalCoinCount})</SelectItem>
                   <SelectItem value="25">25</SelectItem>
                   <SelectItem value="50">50</SelectItem>
                   <SelectItem value="100">100</SelectItem>
