@@ -141,6 +141,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
 
             # Determine serializer based on plan
             user_plan = getattr(self.user, 'subscription_plan', 'free')
+            logger.info(f"📊 User plan: {user_plan} for user {getattr(self.user, 'email', 'unknown')}")
             if user_plan == 'enterprise':
                 serializer_class = CryptoDataSerializer
             elif user_plan == 'basic':
@@ -168,13 +169,18 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             # For premium users, fetch live updates in background (non-blocking)
             if user_plan in ['basic', 'enterprise']:
                 # Start background task to fetch live data
+                logger.info(f"🚀 Starting live_update background task for {user_plan} user")
                 asyncio.create_task(self._send_live_update(quote_currency, min(page_size, 500)))
+            else:
+                logger.info(f"⏭️ Skipping live_update for {user_plan} user (not premium)")
 
     async def _send_live_update(self, quote_currency: str, page_size: int):
         """Fetch live data from Binance and send as update (background task)"""
         try:
+            logger.info(f"📡 Fetching live Binance data for {quote_currency} (page_size={page_size})")
             live_data = await self._fetch_live_binance_data(quote_currency, page_size)
             if live_data:
+                logger.info(f"✅ Sending live_update with {len(live_data)} items")
                 await self.send(text_data=json.dumps({
                     'type': 'live_update',
                     'total_count': len(live_data),
@@ -182,6 +188,8 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                     'live': True,
                     'data': live_data,
                 }, cls=DecimalEncoder))
+            else:
+                logger.warning(f"⚠️ No live data received from Binance")
         except Exception as e:
             logger.error(f"Failed to send live update: {e}")
 
