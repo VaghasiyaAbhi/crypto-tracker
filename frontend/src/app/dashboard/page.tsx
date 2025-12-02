@@ -653,16 +653,15 @@ export default function DashboardPage() {
         setIsRefreshing(false); // Not refreshing on initial connect
         setLastUpdateTime(new Date().toLocaleTimeString());
         
-        // ✨ Request ALL currencies on connect for instant client-side filtering
-        // This allows instant currency switching without additional WebSocket requests
+        // Request data for current currency on connect
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-          console.log('📡 Requesting ALL currencies for instant switching...');
+          console.log('📡 Requesting data for currency:', baseCurrencyRef.current);
           socketRef.current.send(JSON.stringify({
             type: 'request_snapshot',
             sort_by: 'profit',
             sort_order: 'desc',
-            page_size: 2000, // Get all pairs
-            quote_currency: 'ALL' // ✨ Request all currencies at once
+            page_size: 1000, // Get all pairs for current currency
+            quote_currency: baseCurrencyRef.current
           }));
         }
       };
@@ -701,10 +700,9 @@ export default function DashboardPage() {
               firstSymbols: items.slice(0, 5).map(i => i.symbol)
             });
             
-            // ✨ IMPORTANT: Only accept snapshot if it matches current currency OR is "ALL"
-            // This prevents stale data from other currencies being displayed
+            // Only accept snapshot if it matches current currency
             const snapshotCurrency = msg.quote_currency || 'USDT';
-            if (snapshotCurrency !== 'ALL' && snapshotCurrency !== baseCurrencyRef.current) {
+            if (snapshotCurrency !== baseCurrencyRef.current) {
               console.log(`⚠️ Ignoring snapshot for ${snapshotCurrency} - current currency is ${baseCurrencyRef.current}`);
               return;
             }
@@ -713,7 +711,7 @@ export default function DashboardPage() {
               snapshotAccumRef.current = { chunks: msg.total_chunks || 1, total: msg.total_count || 0, buffer: new Map() };
             }
             
-            // ✨ Store ALL items in buffer (for allCryptoData), filter for display
+            // Store items in buffer
             items.forEach(i => {
               snapshotAccumRef.current!.buffer.set(i.symbol, i);
             });
@@ -724,15 +722,10 @@ export default function DashboardPage() {
               console.log('✅ Snapshot complete - Total symbols:', merged.length, 'First 5:', merged.slice(0, 5).map(i => i.symbol));
               snapshotAccumRef.current = null;
               
-              // ✨ Store ALL data for instant currency switching
-              setAllCryptoData(prevAll => {
-                // Merge new data with existing (update existing, add new)
-                const allDataMap = new Map(prevAll.map(item => [item.symbol, item]));
-                merged.forEach(item => allDataMap.set(item.symbol, item));
-                return Array.from(allDataMap.values());
-              });
+              // Store total count for this currency (for "All" option display)
+              setAllCryptoData(merged);
               
-              // Filter for current currency display
+              // Filter for current currency display (all should already match)
               const currentCurrencyData = merged.filter(i => i.symbol?.endsWith(baseCurrencyRef.current));
               
               // ✨ FIX: If we already have data, UPDATE values without changing symbol order
@@ -778,7 +771,7 @@ export default function DashboardPage() {
             
             console.log('🔴 Live update received:', items.length, 'items');
             
-            // ✨ Also update allCryptoData for instant currency switching
+            // Update allCryptoData for accurate count
             setAllCryptoData(prevAll => {
               const allDataMap = new Map(prevAll.map(item => [item.symbol, item]));
               items.forEach(item => allDataMap.set(item.symbol, item));
@@ -983,54 +976,39 @@ export default function DashboardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detectAndAnimateChanges]); // Only restart if detectAndAnimateChanges changes (visibleColumns)
 
-  // ✨ INSTANT currency switching - filter from cached allCryptoData
+  // Currency change effect - request new data from WebSocket
   useEffect(() => {
     console.log('🔄 Currency change effect triggered - NEW VALUE:', baseCurrency);
     console.log('🔄 Updating baseCurrencyRef.current from', baseCurrencyRef.current, 'to', baseCurrency);
     
-    // ✨ Update ref so WebSocket handler always has latest currency
+    // Update ref so WebSocket handler always has latest currency
     baseCurrencyRef.current = baseCurrency;
     
-    // ✨ INSTANT: Filter from cached allCryptoData instead of WebSocket request
-    if (allCryptoData.length > 0) {
-      const filtered = allCryptoData.filter(c => c.symbol?.endsWith(baseCurrency));
-      console.log(`⚡ INSTANT: Filtered ${filtered.length} items for ${baseCurrency} from ${allCryptoData.length} cached items`);
-      
-      if (filtered.length > 0) {
-        setCryptoData(filtered);
-        setLoading(false);
-        // Reset session state for new currency
-        setIsNewSession(true);
-        setSessionSortOrder([]);
-        return; // ✨ Skip WebSocket request - we have data!
-      }
-    }
-    
-    // Fallback: If no cached data for this currency, request from WebSocket
+    // Request data for new currency from WebSocket
     if (socketRef.current?.readyState === WebSocket.OPEN) {
-      console.log('💱 Currency changed to:', baseCurrency, '- no cached data, requesting from WebSocket');
+      console.log('💱 Currency changed to:', baseCurrency, '- requesting from WebSocket');
       
       // CLEAR OLD DATA IMMEDIATELY when currency changes
       setCryptoData([]);
+      setAllCryptoData([]); // Clear all data for new currency
       setLoading(true); // Show loading state while fetching new currency data
       
       // Clear any accumulated snapshot data
       snapshotAccumRef.current = null;
       dataBatchRef.current.clear();
       
-      const pageSize = itemCount === 'All' ? 1000 : Math.min(parseInt(itemCount), 100);
       socketRef.current.send(JSON.stringify({
         type: 'request_snapshot',
         sort_by: 'profit',
         sort_order: 'desc',
-        page_size: pageSize,
+        page_size: 1000, // Get all pairs for this currency
         quote_currency: baseCurrency
       }));
       // Reset session state for new currency
       setIsNewSession(true);
       setSessionSortOrder([]);
     }
-  }, [baseCurrency, allCryptoData, itemCount]);
+  }, [baseCurrency]);
 
   // Cleanup throttle map periodically to prevent memory leaks
   useEffect(() => {
@@ -1141,24 +1119,24 @@ export default function DashboardPage() {
     return filteredData.slice(0, parseInt(itemCount));
   }, [cryptoData, sortConfig, baseCurrency, itemCount, searchQuery, symbolFilter]);
 
-  // ✨ Total count of coins for selected currency - use allCryptoData for accurate count
+  // Total count of coins for selected currency
   const totalCoinCount = useMemo(() => {
-    // Use allCryptoData for accurate total count across all currencies
+    // allCryptoData contains all symbols for current currency
+    // Use it for accurate count, fallback to cryptoData
     const base: CryptoData[] = Array.isArray(allCryptoData) && allCryptoData.length > 0 
       ? allCryptoData 
       : (Array.isArray(cryptoData) ? cryptoData : []);
-    return base.filter(c => c.symbol?.endsWith(baseCurrency)).length;
-  }, [allCryptoData, cryptoData, baseCurrency]);
+    return base.length;
+  }, [allCryptoData, cryptoData]);
 
   const filteredSymbols = useMemo(() => {
-    // ✨ Use allCryptoData for symbol filtering if available
+    // Use allCryptoData for symbol filtering if available
     const base: CryptoData[] = Array.isArray(allCryptoData) && allCryptoData.length > 0 
       ? allCryptoData 
       : (Array.isArray(cryptoData) ? cryptoData : []);
     return base
       .map(c => c.symbol)
       .filter(symbol => 
-        symbol.endsWith(baseCurrency) && // Only show symbols matching selected currency
         symbol.toLowerCase().includes(symbolSearch.toLowerCase())
       );
   }, [cryptoData, symbolSearch, baseCurrency]);
