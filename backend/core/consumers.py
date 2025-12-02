@@ -251,8 +251,14 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             
             # Sort by 24h volume (highest volume first) - better for showing major coins
             filtered_data.sort(key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
-            # Use page_size up to 1000 to ensure ALL coins are fetched
-            top_symbols = filtered_data[:min(page_size, 1000)]
+            # Get ALL symbols for display, but only fetch klines for top 100
+            all_symbols = filtered_data[:min(page_size, 1000)]
+            # Only fetch klines for top 100 symbols (due to Binance API rate limits)
+            klines_symbols = all_symbols[:100]
+            # Remaining symbols get basic ticker data only
+            basic_symbols = all_symbols[100:]
+            
+            logger.info(f"📊 Fetching klines for {len(klines_symbols)} symbols, basic data for {len(basic_symbols)} symbols")
             
             # Step 2: Fetch klines for top symbols in parallel
             def fetch_klines_for_symbol(ticker_item):
@@ -377,10 +383,10 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 except Exception as e:
                     return self._basic_ticker_data(ticker_item)
             
-            # Use ThreadPoolExecutor for parallel klines fetching
+            # Use ThreadPoolExecutor for parallel klines fetching (only top 100)
             live_data = []
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                futures = {executor.submit(fetch_klines_for_symbol, item): item for item in top_symbols}
+                futures = {executor.submit(fetch_klines_for_symbol, item): item for item in klines_symbols}
                 for future in concurrent.futures.as_completed(futures):
                     try:
                         result = future.result()
@@ -388,6 +394,10 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                             live_data.append(result)
                     except Exception:
                         pass
+            
+            # Add basic data for remaining symbols (no klines)
+            for item in basic_symbols:
+                live_data.append(self._basic_ticker_data(item))
             
             # Sort by price change
             live_data.sort(key=lambda x: float(x.get('price_change_percent_24h', 0)), reverse=True)
