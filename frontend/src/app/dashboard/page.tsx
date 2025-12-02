@@ -1016,6 +1016,16 @@ export default function DashboardPage() {
                    val === 'N/A' || 
                    val === '';
           };
+
+          // Helper function to convert value to number for sorting
+          const toNumber = (val: any): number => {
+            if (typeof val === 'number') return val;
+            if (typeof val === 'string') {
+              const parsed = parseFloat(val);
+              return isNaN(parsed) ? 0 : parsed;
+            }
+            return 0;
+          };
           
           const aEmpty = isEmpty(aValue);
           const bEmpty = isEmpty(bValue);
@@ -1026,6 +1036,19 @@ export default function DashboardPage() {
           if (aEmpty) return 1;
           // b is empty - push to end
           if (bEmpty) return -1;
+          
+          // For numeric columns (prices, volumes, percentages), always sort as numbers
+          const numericColumns = ['last_price', 'bid_price', 'ask_price', 'spread', 'high_price_24h', 'low_price_24h', 
+            'price_change_percent_24h', 'quote_volume_24h', 'm1', 'm2', 'm3', 'm5', 'm10', 'm15', 'm60',
+            'm1_vol_pct', 'm2_vol_pct', 'm3_vol_pct', 'm5_vol_pct', 'm10_vol_pct', 'm15_vol_pct', 'm60_vol_pct',
+            'm1_r_pct', 'm2_r_pct', 'm3_r_pct', 'm5_r_pct', 'm10_r_pct', 'm15_r_pct', 'm60_r_pct',
+            'm1_vol', 'm5_vol', 'm10_vol', 'm15_vol', 'm60_vol', 'rsi_1m', 'rsi_3m', 'rsi_5m', 'rsi_15m'];
+          
+          if (numericColumns.includes(sortConfig.key as string)) {
+            const aNum = toNumber(aValue);
+            const bNum = toNumber(bValue);
+            return sortConfig.direction === 'ascending' ? aNum - bNum : bNum - aNum;
+          }
           
           // Both have valid values - sort normally
           if (typeof aValue === 'number' && typeof bValue === 'number') {
