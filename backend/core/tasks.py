@@ -1926,16 +1926,33 @@ def fetch_binance_data_task(self):
         # Fetch 24hr ticker data to get symbols list
         ticker_data = realtime_fetcher.fetch_ticker_24hr()
         
+        # Dynamic volume thresholds based on quote currency value
+        # BTC pairs have low quote volume (measured in BTC, worth ~$87k each)
+        # USDT/USDC/FDUSD pairs have high quote volume (measured in ~$1 each)
+        volume_thresholds = {
+            'BTC': 0.1,      # 0.1 BTC ≈ $8,700 daily volume
+            'BNB': 1,        # 1 BNB ≈ $600 daily volume
+            'USDT': 1000,    # $1,000 daily volume
+            'USDC': 1000,    # $1,000 daily volume
+            'FDUSD': 1000,   # $1,000 daily volume
+        }
+        
         # Filter for ALL quote currencies with volume AND actively trading status
         valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC']
         all_pairs = []
         for item in ticker_data:
             symbol = item['symbol']
             # Check if symbol ends with valid currency
-            if not any(symbol.endswith(currency) for currency in valid_currencies):
+            quote_currency = None
+            for currency in valid_currencies:
+                if symbol.endswith(currency):
+                    quote_currency = currency
+                    break
+            if not quote_currency:
                 continue
-            # Check volume threshold
-            if float(item.get('quoteVolume', 0)) <= 1000:
+            # Check volume threshold (dynamic based on currency)
+            min_volume = volume_thresholds.get(quote_currency, 1000)
+            if float(item.get('quoteVolume', 0)) <= min_volume:
                 continue
             # IMPORTANT: Only include actively trading symbols
             if active_trading_symbols is not None and symbol not in active_trading_symbols:
