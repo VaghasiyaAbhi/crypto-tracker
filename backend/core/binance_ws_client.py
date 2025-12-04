@@ -210,7 +210,7 @@ class BinanceWebSocketClient:
                 logger.error(f"DB update loop error: {e}")
     
     async def _update_database(self):
-        """Update database with buffered ticker data using asyncpg - COPY protocol for speed"""
+        """Update database with buffered ticker data using asyncpg - UNNEST for fast batch upsert"""
         try:
             # Copy and clear buffers immediately
             ticker_snapshot = dict(self.ticker_data_buffer)
@@ -234,8 +234,17 @@ class BinanceWebSocketClient:
             
             start_time = time.time()
             
-            # Prepare batch data as list of tuples
-            batch_data = []
+            # Prepare arrays for UNNEST
+            symbols = []
+            last_prices = []
+            changes = []
+            highs = []
+            lows = []
+            volumes = []
+            bids = []
+            asks = []
+            spreads = []
+            
             for symbol in symbols_list[:500]:  # Limit to 500
                 data = ticker_snapshot.get(symbol)
                 if not data:
@@ -243,59 +252,31 @@ class BinanceWebSocketClient:
                 
                 try:
                     metrics = self._calculate_metrics(data)
-                    batch_data.append((
-                        symbol,
-                        float(metrics['last_price']),
-                        float(metrics['price_change_percent_24h']),
-                        float(metrics['high_price_24h']),
-                        float(metrics['low_price_24h']),
-                        float(metrics['quote_volume_24h']),
-                        float(metrics['bid_price']),
-                        float(metrics['ask_price']),
-                        float(metrics['spread'])
-                    ))
+                    symbols.append(symbol)
+                    last_prices.append(float(metrics['last_price']))
+                    changes.append(float(metrics['price_change_percent_24h']))
+                    highs.append(float(metrics['high_price_24h']))
+                    lows.append(float(metrics['low_price_24h']))
+                    volumes.append(float(metrics['quote_volume_24h']))
+                    bids.append(float(metrics['bid_price']))
+                    asks.append(float(metrics['ask_price']))
+                    spreads.append(float(metrics['spread']))
                 except Exception as e:
                     logger.error(f"   Failed to prepare {symbol}: {e}")
             
-            if not batch_data:
+            if not symbols:
                 return
             
-            logger.info(f"   Prepared {len(batch_data)} records, using COPY protocol...")
+            logger.info(f"   Prepared {len(symbols)} records, using UNNEST batch upsert...")
             
-            # Use COPY protocol via temp table for fastest bulk upsert
+            # Use UNNEST for single-query batch upsert (fastest approach)
             async with self.db_pool.acquire() as conn:
                 try:
-                    # Create temp table
-                    await conn.execute('''
-                        CREATE TEMP TABLE IF NOT EXISTS temp_crypto (
-                            symbol VARCHAR(20),
-                            last_price DECIMAL,
-                            price_change_percent_24h DECIMAL,
-                            high_price_24h DECIMAL,
-                            low_price_24h DECIMAL,
-                            quote_volume_24h DECIMAL,
-                            bid_price DECIMAL,
-                            ask_price DECIMAL,
-                            spread DECIMAL
-                        ) ON COMMIT DROP
-                    ''')
-                    
-                    # Use copy_records_to_table for bulk insert into temp table
-                    await conn.copy_records_to_table(
-                        'temp_crypto',
-                        records=batch_data,
-                        columns=['symbol', 'last_price', 'price_change_percent_24h', 
-                                'high_price_24h', 'low_price_24h', 'quote_volume_24h',
-                                'bid_price', 'ask_price', 'spread']
-                    )
-                    
-                    # Upsert from temp to main table
                     result = await conn.execute('''
                         INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
                             high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
-                        SELECT symbol, last_price, price_change_percent_24h, 
-                            high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread
-                        FROM temp_crypto
+                        SELECT * FROM UNNEST($1::varchar[], $2::decimal[], $3::decimal[], 
+                            $4::decimal[], $5::decimal[], $6::decimal[], $7::decimal[], $8::decimal[], $9::decimal[])
                         ON CONFLICT (symbol) DO UPDATE SET
                             last_price = EXCLUDED.last_price,
                             price_change_percent_24h = EXCLUDED.price_change_percent_24h,
@@ -305,16 +286,16 @@ class BinanceWebSocketClient:
                             bid_price = EXCLUDED.bid_price,
                             ask_price = EXCLUDED.ask_price,
                             spread = EXCLUDED.spread
-                    ''')
+                    ''', symbols, last_prices, changes, highs, lows, volumes, bids, asks, spreads)
                     
                     elapsed = time.time() - start_time
                     self.stats['db_updates'] += 1
                     self.stats['last_update'] = time.time()
                     
-                    logger.info(f"✅ Upserted {len(batch_data)} symbols in {elapsed:.2f}s ({result})")
+                    logger.info(f"✅ Upserted {len(symbols)} symbols in {elapsed:.2f}s ({result})")
                     
                 except Exception as e:
-                    logger.error(f"   COPY upsert failed: {e}")
+                    logger.error(f"   UNNEST upsert failed: {e}")
                     import traceback
                     logger.error(traceback.format_exc())
             
