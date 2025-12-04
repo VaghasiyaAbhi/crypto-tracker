@@ -33,7 +33,7 @@ _active_symbols_cache = {
 # GLOBAL CACHE FOR LIVE KLINES DATA
 # ========================================
 # Caches klines data per currency to avoid refetching on every currency switch
-# TTL: 30 seconds (data is reasonably fresh for crypto)
+# TTL: 10 seconds (matches the frontend refresh interval for real-time accuracy)
 _klines_cache = {
     'USDT': {'data': None, 'last_updated': 0},
     'USDC': {'data': None, 'last_updated': 0},
@@ -41,7 +41,7 @@ _klines_cache = {
     'BNB': {'data': None, 'last_updated': 0},
     'BTC': {'data': None, 'last_updated': 0},
 }
-KLINES_CACHE_TTL = 30  # 30 seconds - fresh enough for crypto data
+KLINES_CACHE_TTL = 10  # 10 seconds - matches frontend refresh for real-time prices
 
 def get_active_trading_symbols():
     """
@@ -214,19 +214,15 @@ class CryptoConsumer(AsyncWebsocketConsumer):
 
             # ========================================
             # OPTIMIZATION: Check if we have fresh klines cache for this currency
-            # If yes, skip database snapshot and send cached live data immediately
-            # This prevents the flickering between old DB data and fresh live data
+            # If yes, send cached live data immediately, then fetch fresh in background
+            # This prevents flickering while ensuring data stays up-to-date every 10s
             # ========================================
             cache_entry = _klines_cache.get(quote_currency) if not fetch_all_currencies else None
-            has_fresh_cache = (
-                cache_entry and 
-                cache_entry['data'] and 
-                (time.time() - cache_entry['last_updated']) < KLINES_CACHE_TTL
-            )
+            has_cache = (cache_entry and cache_entry['data'] and len(cache_entry['data']) > 0)
+            cache_age = (time.time() - cache_entry['last_updated']) if has_cache else float('inf')
             
-            if has_fresh_cache and user_plan in ['basic', 'enterprise']:
-                # FAST PATH: Use cached live data directly (no database query)
-                cache_age = time.time() - cache_entry['last_updated']
+            if has_cache and user_plan in ['basic', 'enterprise']:
+                # FAST PATH: Send cached data immediately (prevents flickering)
                 logger.info(f"⚡ FAST PATH: Sending cached klines data for {quote_currency} (age: {cache_age:.1f}s)")
                 
                 await self.send(text_data=json.dumps({
@@ -234,17 +230,18 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                     'total_count': len(cache_entry['data'][:page_size]),
                     'quote_currency': quote_currency,
                     'live': True,
-                    'cached_live': True,  # Indicates this came from klines cache
+                    'cached_live': True,
                     'data': cache_entry['data'][:page_size],
                 }, cls=DecimalEncoder))
                 
-                # Also refresh cache in background if it's getting old (>15 seconds)
-                if cache_age > 15:
-                    logger.info(f"🔄 Cache getting old ({cache_age:.1f}s), refreshing in background")
+                # ALWAYS fetch fresh data in background if cache is older than 8 seconds
+                # This ensures every 10-second refresh gets new data
+                if cache_age > 8:
+                    logger.info(f"🔄 Refreshing cache in background (age: {cache_age:.1f}s)")
                     asyncio.create_task(self._send_live_update(quote_currency, 500))
                 return  # Skip database snapshot entirely
             
-            # SLOW PATH: No fresh cache available, send database snapshot first
+            # SLOW PATH: No cache available, send database snapshot first
             # If fetching ALL currencies, don't filter by quote_currency
             if fetch_all_currencies:
                 total_count = await database_sync_to_async(
