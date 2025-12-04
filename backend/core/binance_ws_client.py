@@ -206,12 +206,10 @@ class BinanceWebSocketClient:
             
             logger.info(f"   Prepared {len(updates)} records, using Django ORM bulk update...")
             
-            # Use ThreadPoolExecutor for sync ORM operation
+            # Run sync update in executor to not block the event loop
             try:
-                import concurrent.futures
-                loop = asyncio.get_event_loop()
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    result = await loop.run_in_executor(executor, self._sync_bulk_update, updates)
+                loop = asyncio.get_running_loop()
+                result = await loop.run_in_executor(None, self._sync_bulk_update, updates)
                 
                 elapsed = time.time() - start_time
                 self.stats['db_updates'] += 1
