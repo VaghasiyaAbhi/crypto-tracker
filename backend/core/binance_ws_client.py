@@ -227,9 +227,15 @@ class BinanceWebSocketClient:
         try:
             from core.models import CryptoData
             
-            symbols_to_update = list(self.ticker_data_buffer.keys())
-            if not symbols_to_update:
+            # Copy the buffers to avoid modification during iteration
+            ticker_snapshot = dict(self.ticker_data_buffer)
+            kline_snapshot = dict(self.kline_data_buffer)
+            
+            if not ticker_snapshot:
                 return
+            
+            # Clear buffers immediately to accept new data
+            self.ticker_data_buffer.clear()
             
             updated_count = 0
             
@@ -238,10 +244,10 @@ class BinanceWebSocketClient:
             def batch_update():
                 nonlocal updated_count
                 with transaction.atomic():
-                    for symbol, data in self.ticker_data_buffer.items():
+                    for symbol, data in ticker_snapshot.items():
                         try:
                             # Calculate additional metrics from kline data if available
-                            klines = self.kline_data_buffer.get(symbol, [])
+                            klines = kline_snapshot.get(symbol, [])
                             metrics = self._calculate_metrics(data, klines)
                             
                             # Update or create the record
@@ -260,10 +266,7 @@ class BinanceWebSocketClient:
             self.stats['db_updates'] += 1
             self.stats['last_update'] = time.time()
             
-            logger.info(f"💾 DB Updated: {updated_count} symbols (ticker msgs: {self.stats['ticker_messages']}, kline msgs: {self.stats['kline_messages']})")
-            
-            # Clear buffers after successful update
-            self.ticker_data_buffer.clear()
+            logger.info(f"💾 DB Updated: {updated_count} symbols (ticker msgs: {self.stats['ticker_messages']})")
             
         except Exception as e:
             logger.error(f"Database update failed: {e}")
