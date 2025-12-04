@@ -212,7 +212,39 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             else:
                 serializer_class = CryptoDataFreeSerializer
 
-            # Send cached data immediately (fast)
+            # ========================================
+            # OPTIMIZATION: Check if we have fresh klines cache for this currency
+            # If yes, skip database snapshot and send cached live data immediately
+            # This prevents the flickering between old DB data and fresh live data
+            # ========================================
+            cache_entry = _klines_cache.get(quote_currency) if not fetch_all_currencies else None
+            has_fresh_cache = (
+                cache_entry and 
+                cache_entry['data'] and 
+                (time.time() - cache_entry['last_updated']) < KLINES_CACHE_TTL
+            )
+            
+            if has_fresh_cache and user_plan in ['basic', 'enterprise']:
+                # FAST PATH: Use cached live data directly (no database query)
+                cache_age = time.time() - cache_entry['last_updated']
+                logger.info(f"⚡ FAST PATH: Sending cached klines data for {quote_currency} (age: {cache_age:.1f}s)")
+                
+                await self.send(text_data=json.dumps({
+                    'type': 'live_update',
+                    'total_count': len(cache_entry['data'][:page_size]),
+                    'quote_currency': quote_currency,
+                    'live': True,
+                    'cached_live': True,  # Indicates this came from klines cache
+                    'data': cache_entry['data'][:page_size],
+                }, cls=DecimalEncoder))
+                
+                # Also refresh cache in background if it's getting old (>15 seconds)
+                if cache_age > 15:
+                    logger.info(f"🔄 Cache getting old ({cache_age:.1f}s), refreshing in background")
+                    asyncio.create_task(self._send_live_update(quote_currency, 500))
+                return  # Skip database snapshot entirely
+            
+            # SLOW PATH: No fresh cache available, send database snapshot first
             # If fetching ALL currencies, don't filter by quote_currency
             if fetch_all_currencies:
                 total_count = await database_sync_to_async(
