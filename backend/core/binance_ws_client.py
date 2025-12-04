@@ -212,9 +212,13 @@ class BinanceWebSocketClient:
     
     async def _db_update_loop(self):
         """Background loop to update database with buffered data"""
+        logger.info("🔄 DB update loop started")
         while self.is_connected:
             try:
                 await asyncio.sleep(self.update_interval)
+                
+                buffer_size = len(self.ticker_data_buffer)
+                logger.info(f"🔄 DB update loop tick - buffered: {buffer_size} symbols")
                 
                 if self.ticker_data_buffer:
                     await self._update_database()
