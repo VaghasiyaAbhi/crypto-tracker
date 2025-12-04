@@ -774,7 +774,7 @@ export default function DashboardPage() {
               return;
             }
             
-            console.log('🔴 Live update received:', items.length, 'items');
+            console.log('🔴 Live update received:', items.length, 'items for', snapshotCurrency);
             
             // Update allCryptoData for accurate count
             setAllCryptoData(prevAll => {
@@ -786,6 +786,11 @@ export default function DashboardPage() {
             // Update existing data with live values
             setCryptoData(prevData => {
               const liveDataMap = new Map(items.map(item => [item.symbol, item]));
+              
+              // If prevData is empty (currency just changed), use items directly
+              if (prevData.length === 0) {
+                return items;
+              }
               
               // Update existing items with live data
               const updated = prevData.map(existingItem => {
@@ -799,6 +804,11 @@ export default function DashboardPage() {
               
               return [...updated, ...newSymbols];
             });
+            
+            // ✅ FIX: Stop loading spinner when live_update arrives (currency change)
+            setLoading(false);
+            setIsRefreshing(false);
+            setError(null);
             return;
           }
           
