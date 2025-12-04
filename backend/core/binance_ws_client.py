@@ -125,8 +125,9 @@ class BinanceWebSocketClient:
                 password=db_password,
                 port=int(db_port),
                 min_size=1,
-                max_size=5,
-                command_timeout=30
+                max_size=3,
+                command_timeout=120,  # Increase timeout to 2 minutes
+                statement_cache_size=0  # Disable statement caching for dynamic queries
             )
             
             logger.info(f"✅ Database pool created successfully!")
@@ -245,7 +246,7 @@ class BinanceWebSocketClient:
             asks = []
             spreads = []
             
-            for symbol in symbols_list[:500]:  # Limit to 500
+            for symbol in symbols_list[:100]:  # Limit to 100 for faster updates
                 data = ticker_snapshot.get(symbol)
                 if not data:
                     continue
