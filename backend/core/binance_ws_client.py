@@ -284,25 +284,29 @@ class BinanceWebSocketClient:
                     except Exception as e:
                         logger.error(f"Failed to prepare {symbol}: {e}")
                 
-                # Bulk operations
+                # Bulk operations with very small batches
                 updated_count = 0
                 created_count = 0
                 
                 if records_to_update:
-                    logger.info(f"   Updating {len(records_to_update)} records...")
-                    # Use bulk_update for existing records
-                    CryptoData.objects.bulk_update(
-                        records_to_update,
-                        ['last_price', 'price_change_percent_24h', 'high_price_24h', 
-                         'low_price_24h', 'quote_volume_24h', 'bid_price', 'ask_price', 'spread'],
-                        batch_size=100
-                    )
-                    updated_count = len(records_to_update)
+                    logger.info(f"   Updating {len(records_to_update)} records in batches of 20...")
+                    # Split into smaller batches and update incrementally
+                    for i in range(0, len(records_to_update), 20):
+                        batch = records_to_update[i:i+20]
+                        CryptoData.objects.bulk_update(
+                            batch,
+                            ['last_price', 'price_change_percent_24h', 'high_price_24h', 
+                             'low_price_24h', 'quote_volume_24h', 'bid_price', 'ask_price', 'spread'],
+                            batch_size=20
+                        )
+                        updated_count += len(batch)
+                        if (i + 20) % 100 == 0:
+                            logger.info(f"   Progress: {updated_count}/{len(records_to_update)} updated...")
                     logger.info(f"   Updated {updated_count} records ({sync_time.time() - start:.1f}s)")
                 
                 if records_to_create:
                     logger.info(f"   Creating {len(records_to_create)} new records...")
-                    CryptoData.objects.bulk_create(records_to_create, batch_size=100)
+                    CryptoData.objects.bulk_create(records_to_create, batch_size=20)
                     created_count = len(records_to_create)
                     logger.info(f"   Created {created_count} records ({sync_time.time() - start:.1f}s)")
                 
