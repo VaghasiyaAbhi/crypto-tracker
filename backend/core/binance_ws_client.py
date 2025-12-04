@@ -193,9 +193,6 @@ class BinanceWebSocketClient:
     
     def _do_db_update(self, ticker_snapshot):
         """Synchronous database update - runs in thread pool"""
-        # Import Django models inside the thread
-        import django
-        django.setup()
         from core.models import CryptoData
         from django.db import connection as db_conn
         
@@ -208,48 +205,55 @@ class BinanceWebSocketClient:
         
         # Use raw SQL for faster updates
         updated_count = 0
-        created_count = 0
         
         try:
-            with db_conn.cursor() as cursor:
-                for symbol in symbols_list[:100]:  # Limit to top 100 for now
-                    data = ticker_snapshot.get(symbol)
-                    if not data:
-                        continue
-                    
-                    try:
-                        metrics = self._calculate_metrics(data)
-                        
-                        # Use UPSERT (INSERT ... ON CONFLICT UPDATE)
-                        cursor.execute("""
-                            INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
-                                high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                            ON CONFLICT (symbol) DO UPDATE SET
-                                last_price = EXCLUDED.last_price,
-                                price_change_percent_24h = EXCLUDED.price_change_percent_24h,
-                                high_price_24h = EXCLUDED.high_price_24h,
-                                low_price_24h = EXCLUDED.low_price_24h,
-                                quote_volume_24h = EXCLUDED.quote_volume_24h,
-                                bid_price = EXCLUDED.bid_price,
-                                ask_price = EXCLUDED.ask_price,
-                                spread = EXCLUDED.spread
-                        """, [
-                            symbol,
-                            float(metrics['last_price']),
-                            float(metrics['price_change_percent_24h']),
-                            float(metrics['high_price_24h']),
-                            float(metrics['low_price_24h']),
-                            float(metrics['quote_volume_24h']),
-                            float(metrics['bid_price']),
-                            float(metrics['ask_price']),
-                            float(metrics['spread'])
-                        ])
-                        updated_count += 1
-                    except Exception as e:
-                        logger.error(f"   Failed to upsert {symbol}: {e}")
+            # Build batch UPSERT query
+            values = []
+            for symbol in symbols_list[:100]:  # Limit to top 100 for now
+                data = ticker_snapshot.get(symbol)
+                if not data:
+                    continue
                 
-                db_conn.commit()
+                try:
+                    metrics = self._calculate_metrics(data)
+                    values.append((
+                        symbol,
+                        float(metrics['last_price']),
+                        float(metrics['price_change_percent_24h']),
+                        float(metrics['high_price_24h']),
+                        float(metrics['low_price_24h']),
+                        float(metrics['quote_volume_24h']),
+                        float(metrics['bid_price']),
+                        float(metrics['ask_price']),
+                        float(metrics['spread'])
+                    ))
+                except Exception as e:
+                    logger.error(f"   Failed to prepare {symbol}: {e}")
+            
+            if values:
+                logger.info(f"   Executing batch upsert for {len(values)} symbols...")
+                
+                # Execute as batch
+                with db_conn.cursor() as cursor:
+                    from psycopg2.extras import execute_values
+                    execute_values(
+                        cursor,
+                        """INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
+                            high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
+                        VALUES %s
+                        ON CONFLICT (symbol) DO UPDATE SET
+                            last_price = EXCLUDED.last_price,
+                            price_change_percent_24h = EXCLUDED.price_change_percent_24h,
+                            high_price_24h = EXCLUDED.high_price_24h,
+                            low_price_24h = EXCLUDED.low_price_24h,
+                            quote_volume_24h = EXCLUDED.quote_volume_24h,
+                            bid_price = EXCLUDED.bid_price,
+                            ask_price = EXCLUDED.ask_price,
+                            spread = EXCLUDED.spread""",
+                        values,
+                        page_size=100
+                    )
+                updated_count = len(values)
         except Exception as e:
             logger.error(f"   Database error: {e}")
             import traceback
