@@ -222,9 +222,11 @@ class BinanceWebSocketClient:
             
             logger.info(f"📝 Starting DB update for {len(ticker_snapshot)} symbols...")
             
-            # Filter to USDT pairs only and SORT to prevent deadlocks
-            symbols_list = sorted([s for s in ticker_snapshot.keys() if s.endswith('USDT')])
-            logger.info(f"   Filtering to {len(symbols_list)} USDT pairs...")
+            # Support ALL quote currencies (USDT, USDC, FDUSD, BNB, BTC, EUR, etc.)
+            # Sort alphabetically to prevent deadlocks
+            quote_currencies = ('USDT', 'USDC', 'FDUSD', 'BNB', 'BTC', 'EUR', 'TRY', 'DAI', 'TUSD', 'ETH')
+            symbols_list = sorted([s for s in ticker_snapshot.keys() if any(s.endswith(q) for q in quote_currencies)])
+            logger.info(f"   Found {len(symbols_list)} pairs for supported quote currencies...")
             
             if not self.db_pool:
                 logger.warning("   No database pool available!")
@@ -246,7 +248,7 @@ class BinanceWebSocketClient:
             asks = []
             spreads = []
             
-            for symbol in symbols_list[:350]:  # Update 350 USDT pairs per cycle
+            for symbol in symbols_list[:500]:  # Update 500 pairs per cycle (all currencies)
                 data = ticker_snapshot.get(symbol)
                 if not data:
                     continue

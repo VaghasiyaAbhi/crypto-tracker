@@ -30,10 +30,11 @@ _active_symbols_cache = {
 }
 
 # ========================================
-# GLOBAL CACHE FOR LIVE KLINES DATA
+# GLOBAL CACHE FOR LIVE KLINES DATA (LEGACY)
 # ========================================
-# Caches klines data per currency to avoid refetching on every currency switch
-# TTL: 10 seconds (matches the frontend refresh interval for real-time accuracy)
+# NOTE: This cache is now mostly unused since we read from DB directly.
+# The database is updated every 3 seconds by the Binance WebSocket client.
+# Keeping this for backwards compatibility.
 _klines_cache = {
     'USDT': {'data': None, 'last_updated': 0},
     'USDC': {'data': None, 'last_updated': 0},
@@ -41,7 +42,7 @@ _klines_cache = {
     'BNB': {'data': None, 'last_updated': 0},
     'BTC': {'data': None, 'last_updated': 0},
 }
-KLINES_CACHE_TTL = 10  # 10 seconds - matches frontend refresh for real-time prices
+KLINES_CACHE_TTL = 3  # 3 seconds - DB is updated every 3 seconds by WebSocket
 
 def get_active_trading_symbols():
     """
@@ -136,12 +137,23 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             "is_authenticated": is_auth,
             "reason": None if is_auth else "unauthorized"
         }, cls=DecimalEncoder))
-        # Start heartbeat pings (every 20s) so we can see if connection silently dies.
+        
+        # Store user plan for auto-refresh
+        self.user_plan = user_plan
+        self.current_currency = 'USDT'  # Default currency, updated on request_snapshot
+        
+        # Start heartbeat pings (every 3s) so we can see if connection silently dies.
         try:
             loop = asyncio.get_running_loop()
             self.heartbeat_task = loop.create_task(self._heartbeat())
+            # Start auto-refresh loop for premium users (sends fresh data every 3s)
+            if user_plan in ['basic', 'enterprise']:
+                self.auto_refresh_task = loop.create_task(self._auto_refresh_loop())
+            else:
+                self.auto_refresh_task = None
         except RuntimeError:
             self.heartbeat_task = None
+            self.auto_refresh_task = None
 
     async def disconnect(self, close_code):
         if self.room_group_name:
@@ -151,6 +163,41 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             )
         if hasattr(self, 'heartbeat_task') and self.heartbeat_task:
             self.heartbeat_task.cancel()
+        if hasattr(self, 'auto_refresh_task') and self.auto_refresh_task:
+            self.auto_refresh_task.cancel()
+
+    async def _auto_refresh_loop(self):
+        """
+        Automatically send fresh data to premium users every 3 seconds.
+        Data comes from the database which is updated by Binance WebSocket.
+        """
+        try:
+            # Wait 2 seconds before starting (let initial connection settle)
+            await asyncio.sleep(2)
+            
+            while True:
+                await asyncio.sleep(3)  # Refresh every 3 seconds
+                try:
+                    # Get current currency (updated by request_snapshot messages)
+                    currency = getattr(self, 'current_currency', 'USDT')
+                    
+                    # Fetch fresh data from DB and send to client
+                    live_data = await self._fetch_live_data_from_db(currency, 500)
+                    if live_data:
+                        await self.send(text_data=json.dumps({
+                            'type': 'live_update',
+                            'total_count': len(live_data),
+                            'quote_currency': currency,
+                            'live': True,
+                            'auto_refresh': True,
+                            'data': live_data,
+                        }, cls=DecimalEncoder))
+                except Exception as e:
+                    logger.error(f"Auto-refresh error: {e}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Auto-refresh loop error: {e}")
 
     async def crypto_update(self, event):
         # Send data to client; event['data'] expected to be JSON-serializable list or dict
@@ -181,9 +228,12 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             # Get quote currency preference (USDT, USDC, FDUSD, BNB, BTC, or ALL)
             quote_currency = message.get('quote_currency', 'USDT').upper()
             # Validate quote currency - support 'ALL' for fetching all currencies at once
-            valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC', 'ALL']
+            valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC', 'EUR', 'TRY', 'ALL']
             if quote_currency not in valid_currencies:
                 quote_currency = 'USDT'
+            
+            # Store current currency for auto-refresh loop
+            self.current_currency = quote_currency
             
             # If 'ALL', fetch all currencies for instant client-side filtering
             fetch_all_currencies = (quote_currency == 'ALL')
@@ -213,36 +263,19 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 serializer_class = CryptoDataFreeSerializer
 
             # ========================================
-            # OPTIMIZATION: Send cached data immediately to prevent flickering,
-            # then ALWAYS fetch fresh data in background for real-time accuracy
+            # NEW ARCHITECTURE: Database is now updated in real-time by Binance WebSocket
+            # No need for slow Binance API calls - DB data is always fresh (updated every 3s)
             # ========================================
-            cache_entry = _klines_cache.get(quote_currency) if not fetch_all_currencies else None
-            has_cache = (cache_entry and cache_entry['data'] and len(cache_entry['data']) > 0)
-            cache_age = (time.time() - cache_entry['last_updated']) if has_cache else float('inf')
             
-            if has_cache and user_plan in ['basic', 'enterprise']:
-                # FAST PATH: Send cached data immediately (prevents flickering)
-                logger.info(f"⚡ FAST PATH: Sending cached data for {quote_currency} (age: {cache_age:.1f}s)")
-                
-                await self.send(text_data=json.dumps({
-                    'type': 'live_update',
-                    'total_count': len(cache_entry['data'][:page_size]),
-                    'quote_currency': quote_currency,
-                    'live': True,
-                    'cached_live': True,
-                    'data': cache_entry['data'][:page_size],
-                }, cls=DecimalEncoder))
-                
-                # ALWAYS fetch fresh data in background (for real-time 10s updates)
-                # Only skip if cache is very fresh (< 5 seconds) to prevent duplicate fetches
-                if cache_age > 5:
-                    logger.info(f"🔄 Fetching fresh data in background (cache age: {cache_age:.1f}s)")
-                    asyncio.create_task(self._send_live_update(quote_currency, 500))
-                else:
-                    logger.info(f"⏭️ Cache is fresh enough ({cache_age:.1f}s < 5s), skipping background fetch")
-                return  # Skip database snapshot entirely
+            # FAST PATH: For premium users, send fresh DB data immediately
+            if user_plan in ['basic', 'enterprise'] and not fetch_all_currencies:
+                logger.info(f"⚡ FAST PATH: Sending fresh DB data for {quote_currency} (premium user)")
+                # Start background task to fetch from DB (now instant!)
+                live_page_size = 500
+                asyncio.create_task(self._send_live_update(quote_currency, live_page_size))
+                return  # Skip old database snapshot - live_update will send data
             
-            # SLOW PATH: No cache available, send database snapshot first
+            # SLOW PATH: For free users or 'ALL' currency, send database snapshot
             # If fetching ALL currencies, don't filter by quote_currency
             if fetch_all_currencies:
                 total_count = await database_sync_to_async(
@@ -277,12 +310,12 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 logger.info(f"⏭️ Skipping live_update for {user_plan} user (fetch_all={fetch_all_currencies})")
 
     async def _send_live_update(self, quote_currency: str, page_size: int):
-        """Fetch live data from Binance and send as update (background task)"""
+        """Fetch live data from DATABASE (updated by WebSocket) and send as update (background task)"""
         try:
-            logger.info(f"📡 Fetching live Binance data for {quote_currency} (page_size={page_size})")
-            live_data = await self._fetch_live_binance_data(quote_currency, page_size)
+            logger.info(f"📡 Fetching fresh DB data for {quote_currency} (page_size={page_size})")
+            live_data = await self._fetch_live_data_from_db(quote_currency, page_size)
             if live_data:
-                logger.info(f"✅ Sending live_update with {len(live_data)} items")
+                logger.info(f"✅ Sending live_update with {len(live_data)} items from DB")
                 await self.send(text_data=json.dumps({
                     'type': 'live_update',
                     'total_count': len(live_data),
@@ -291,9 +324,71 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                     'data': live_data,
                 }, cls=DecimalEncoder))
             else:
-                logger.warning(f"⚠️ No live data received from Binance")
+                logger.warning(f"⚠️ No live data received from DB")
         except Exception as e:
             logger.error(f"Failed to send live update: {e}")
+
+    async def _fetch_live_data_from_db(self, quote_currency: str, page_size: int):
+        """
+        Fetch LIVE data from DATABASE (updated in real-time by Binance WebSocket).
+        This is FAST (milliseconds) because it reads directly from PostgreSQL.
+        The WebSocket client updates the DB every 3 seconds with fresh Binance data.
+        """
+        try:
+            # Get active trading symbols to filter out delisted
+            active_symbols = get_active_trading_symbols()
+            
+            @database_sync_to_async
+            def fetch_from_db():
+                # Query database for this quote currency
+                qs = CryptoData.objects.filter(
+                    symbol__endswith=quote_currency,
+                    symbol__in=active_symbols
+                ).order_by('-price_change_percent_24h')[:page_size]
+                
+                # Convert to list of dicts with all fields
+                data = []
+                for item in qs:
+                    data.append({
+                        'symbol': item.symbol,
+                        'last_price': str(item.last_price) if item.last_price else '0',
+                        'price_change_percent_24h': str(item.price_change_percent_24h) if item.price_change_percent_24h else '0',
+                        'high_price_24h': str(item.high_price_24h) if item.high_price_24h else '0',
+                        'low_price_24h': str(item.low_price_24h) if item.low_price_24h else '0',
+                        'quote_volume_24h': str(item.quote_volume_24h) if item.quote_volume_24h else '0',
+                        'bid_price': str(item.bid_price) if item.bid_price else '0',
+                        'ask_price': str(item.ask_price) if item.ask_price else '0',
+                        'spread': str(item.spread) if item.spread else '0',
+                        # Return klines fields if available, otherwise zeros for smooth UI
+                        'm1': str(item.m1_return_pct) if hasattr(item, 'm1_return_pct') and item.m1_return_pct else '0',
+                        'm1_r_pct': str(item.m1_return_pct) if hasattr(item, 'm1_return_pct') and item.m1_return_pct else '0',
+                        'm2': str(item.m2_return_pct) if hasattr(item, 'm2_return_pct') and item.m2_return_pct else '0',
+                        'm2_r_pct': str(item.m2_return_pct) if hasattr(item, 'm2_return_pct') and item.m2_return_pct else '0',
+                        'm3': str(item.m3_return_pct) if hasattr(item, 'm3_return_pct') and item.m3_return_pct else '0',
+                        'm3_r_pct': str(item.m3_return_pct) if hasattr(item, 'm3_return_pct') and item.m3_return_pct else '0',
+                        'm5': str(item.m5_return_pct) if hasattr(item, 'm5_return_pct') and item.m5_return_pct else '0',
+                        'm5_r_pct': str(item.m5_return_pct) if hasattr(item, 'm5_return_pct') and item.m5_return_pct else '0',
+                        'm10': str(item.m10_return_pct) if hasattr(item, 'm10_return_pct') and item.m10_return_pct else '0',
+                        'm10_r_pct': str(item.m10_return_pct) if hasattr(item, 'm10_return_pct') and item.m10_return_pct else '0',
+                        'm15': str(item.m15_return_pct) if hasattr(item, 'm15_return_pct') and item.m15_return_pct else '0',
+                        'm15_r_pct': str(item.m15_return_pct) if hasattr(item, 'm15_return_pct') and item.m15_return_pct else '0',
+                        'm60': '0',
+                        'm60_r_pct': '0',
+                        # Default RSI values
+                        'rsi_1m': '50',
+                        'rsi_3m': '50',
+                        'rsi_5m': '50',
+                        'rsi_15m': '50',
+                    })
+                return data
+            
+            return await fetch_from_db()
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch live data from DB: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
 
     async def _fetch_live_binance_data(self, quote_currency: str, page_size: int):
         """Fetch LIVE data from Binance API with calculated columns using klines"""
@@ -607,7 +702,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
     async def _heartbeat(self):
         try:
             while True:
-                await asyncio.sleep(10)  # ⚡ Faster: 20s → 10s for more responsive updates
+                await asyncio.sleep(3)  # ⚡ Fast: 3s updates (matches WebSocket DB update interval)
                 try:
                     await self.send(text_data=json.dumps({"type": "heartbeat", "ts": time.time()}, cls=DecimalEncoder))
                 except Exception as e:
