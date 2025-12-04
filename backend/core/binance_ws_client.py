@@ -233,50 +233,62 @@ class BinanceWebSocketClient:
             updated = 0
             inserted = 0
             
+            logger.info("   Acquiring database connection...")
+            
             # Use asyncpg for async database operations
             async with self.db_pool.acquire() as conn:
-                # Process in batches
-                for symbol in symbols_list[:500]:  # Limit to 500 to be safe
-                    try:
-                        data = ticker_snapshot.get(symbol)
-                        if not data:
-                            continue
-                        
-                        metrics = self._calculate_metrics(data)
-                        
-                        # Use PostgreSQL UPSERT
-                        result = await conn.execute('''
-                            INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
-                                high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                            ON CONFLICT (symbol) DO UPDATE SET
-                                last_price = EXCLUDED.last_price,
-                                price_change_percent_24h = EXCLUDED.price_change_percent_24h,
-                                high_price_24h = EXCLUDED.high_price_24h,
-                                low_price_24h = EXCLUDED.low_price_24h,
-                                quote_volume_24h = EXCLUDED.quote_volume_24h,
-                                bid_price = EXCLUDED.bid_price,
-                                ask_price = EXCLUDED.ask_price,
-                                spread = EXCLUDED.spread
-                        ''', 
-                            symbol,
-                            float(metrics['last_price']),
-                            float(metrics['price_change_percent_24h']),
-                            float(metrics['high_price_24h']),
-                            float(metrics['low_price_24h']),
-                            float(metrics['quote_volume_24h']),
-                            float(metrics['bid_price']),
-                            float(metrics['ask_price']),
-                            float(metrics['spread'])
-                        )
-                        
-                        if 'INSERT' in result:
-                            inserted += 1
-                        else:
-                            updated += 1
+                logger.info("   Connection acquired! Starting updates...")
+                
+                # Process in smaller batches to see progress
+                batch_size = 50
+                for i in range(0, min(len(symbols_list), 500), batch_size):
+                    batch = symbols_list[i:i+batch_size]
+                    batch_start = time.time()
+                    
+                    for symbol in batch:
+                        try:
+                            data = ticker_snapshot.get(symbol)
+                            if not data:
+                                continue
                             
-                    except Exception as e:
-                        logger.error(f"   Failed to update {symbol}: {e}")
+                            metrics = self._calculate_metrics(data)
+                            
+                            # Use PostgreSQL UPSERT
+                            result = await conn.execute('''
+                                INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
+                                    high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
+                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                                ON CONFLICT (symbol) DO UPDATE SET
+                                    last_price = EXCLUDED.last_price,
+                                    price_change_percent_24h = EXCLUDED.price_change_percent_24h,
+                                    high_price_24h = EXCLUDED.high_price_24h,
+                                    low_price_24h = EXCLUDED.low_price_24h,
+                                    quote_volume_24h = EXCLUDED.quote_volume_24h,
+                                    bid_price = EXCLUDED.bid_price,
+                                    ask_price = EXCLUDED.ask_price,
+                                    spread = EXCLUDED.spread
+                            ''', 
+                                symbol,
+                                float(metrics['last_price']),
+                                float(metrics['price_change_percent_24h']),
+                                float(metrics['high_price_24h']),
+                                float(metrics['low_price_24h']),
+                                float(metrics['quote_volume_24h']),
+                                float(metrics['bid_price']),
+                                float(metrics['ask_price']),
+                                float(metrics['spread'])
+                            )
+                            
+                            if 'INSERT' in result:
+                                inserted += 1
+                            else:
+                                updated += 1
+                                
+                        except Exception as e:
+                            logger.error(f"   Failed to update {symbol}: {e}")
+                    
+                    batch_time = time.time() - batch_start
+                    logger.info(f"   Batch {i//batch_size + 1}: {len(batch)} symbols in {batch_time:.2f}s")
             
             elapsed = time.time() - start_time
             self.stats['db_updates'] += 1
