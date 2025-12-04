@@ -289,20 +289,18 @@ class BinanceWebSocketClient:
                 created_count = 0
                 
                 if records_to_update:
-                    logger.info(f"   Updating {len(records_to_update)} records in batches of 20...")
-                    # Split into smaller batches and update incrementally
-                    for i in range(0, len(records_to_update), 20):
-                        batch = records_to_update[i:i+20]
-                        CryptoData.objects.bulk_update(
-                            batch,
-                            ['last_price', 'price_change_percent_24h', 'high_price_24h', 
-                             'low_price_24h', 'quote_volume_24h', 'bid_price', 'ask_price', 'spread'],
-                            batch_size=20
-                        )
-                        updated_count += len(batch)
-                        if (i + 20) % 100 == 0:
-                            logger.info(f"   Progress: {updated_count}/{len(records_to_update)} updated...")
-                    logger.info(f"   Updated {updated_count} records ({sync_time.time() - start:.1f}s)")
+                    logger.info(f"   Saving {len(records_to_update)} records individually...")
+                    # Just use save() for now to debug
+                    for i, record in enumerate(records_to_update):
+                        try:
+                            record.save(update_fields=['last_price', 'price_change_percent_24h', 'high_price_24h', 
+                                                       'low_price_24h', 'quote_volume_24h', 'bid_price', 'ask_price', 'spread'])
+                            updated_count += 1
+                            if (i + 1) % 50 == 0:
+                                logger.info(f"   Progress: {updated_count}/{len(records_to_update)} saved...")
+                        except Exception as e:
+                            logger.error(f"   Failed to save {record.symbol}: {e}")
+                    logger.info(f"   Saved {updated_count} records ({sync_time.time() - start:.1f}s)")
                 
                 if records_to_create:
                     logger.info(f"   Creating {len(records_to_create)} new records...")
