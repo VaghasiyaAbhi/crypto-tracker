@@ -29,6 +29,20 @@ _active_symbols_cache = {
     'cache_ttl': 300  # 5 minutes
 }
 
+# ========================================
+# GLOBAL CACHE FOR LIVE KLINES DATA
+# ========================================
+# Caches klines data per currency to avoid refetching on every currency switch
+# TTL: 30 seconds (data is reasonably fresh for crypto)
+_klines_cache = {
+    'USDT': {'data': None, 'last_updated': 0},
+    'USDC': {'data': None, 'last_updated': 0},
+    'FDUSD': {'data': None, 'last_updated': 0},
+    'BNB': {'data': None, 'last_updated': 0},
+    'BTC': {'data': None, 'last_updated': 0},
+}
+KLINES_CACHE_TTL = 30  # 30 seconds - fresh enough for crypto data
+
 def get_active_trading_symbols():
     """
     Get actively trading symbols from Binance with caching.
@@ -261,8 +275,24 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             return None
     
     def _sync_fetch_live_data(self, quote_currency: str, page_size: int):
-        """Synchronous helper to fetch live data from Binance - OPTIMIZED for speed"""
+        """Synchronous helper to fetch live data from Binance - OPTIMIZED with CACHING"""
+        global _klines_cache
+        
         try:
+            current_time = time.time()
+            
+            # CHECK CACHE FIRST - instant response for recent data
+            cache_entry = _klines_cache.get(quote_currency)
+            if cache_entry and cache_entry['data']:
+                cache_age = current_time - cache_entry['last_updated']
+                if cache_age < KLINES_CACHE_TTL:
+                    logger.info(f"⚡ CACHE HIT for {quote_currency} (age: {cache_age:.1f}s) - returning {len(cache_entry['data'])} symbols instantly")
+                    return cache_entry['data'][:page_size]
+                else:
+                    logger.info(f"🔄 Cache expired for {quote_currency} (age: {cache_age:.1f}s) - fetching fresh data")
+            else:
+                logger.info(f"📡 No cache for {quote_currency} - fetching fresh data")
+            
             # Step 0: Get active trading symbols from cache (filters out delisted)
             active_trading_symbols = get_active_trading_symbols()
             
@@ -442,6 +472,14 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             
             # Sort by price change
             live_data.sort(key=lambda x: float(x.get('price_change_percent_24h', 0)), reverse=True)
+            
+            # UPDATE CACHE for future requests (instant currency switching)
+            _klines_cache[quote_currency] = {
+                'data': live_data,
+                'last_updated': time.time()
+            }
+            logger.info(f"💾 Cached {len(live_data)} symbols for {quote_currency}")
+            
             return live_data
             
         except Exception as e:
