@@ -210,7 +210,7 @@ class BinanceWebSocketClient:
                 logger.error(f"DB update loop error: {e}")
     
     async def _update_database(self):
-        """Update database with buffered ticker data using asyncpg - BATCH optimized"""
+        """Update database with buffered ticker data using asyncpg - COPY protocol for speed"""
         try:
             # Copy and clear buffers immediately
             ticker_snapshot = dict(self.ticker_data_buffer)
@@ -234,7 +234,7 @@ class BinanceWebSocketClient:
             
             start_time = time.time()
             
-            # Prepare batch data
+            # Prepare batch data as list of tuples
             batch_data = []
             for symbol in symbols_list[:500]:  # Limit to 500
                 data = ticker_snapshot.get(symbol)
@@ -260,16 +260,42 @@ class BinanceWebSocketClient:
             if not batch_data:
                 return
             
-            logger.info(f"   Prepared {len(batch_data)} records for batch upsert...")
+            logger.info(f"   Prepared {len(batch_data)} records, using COPY protocol...")
             
-            # Use executemany for faster batch operations
+            # Use COPY protocol via temp table for fastest bulk upsert
             async with self.db_pool.acquire() as conn:
                 try:
-                    # Use a single executemany for all records
-                    await conn.executemany('''
+                    # Create temp table
+                    await conn.execute('''
+                        CREATE TEMP TABLE IF NOT EXISTS temp_crypto (
+                            symbol VARCHAR(20),
+                            last_price DECIMAL,
+                            price_change_percent_24h DECIMAL,
+                            high_price_24h DECIMAL,
+                            low_price_24h DECIMAL,
+                            quote_volume_24h DECIMAL,
+                            bid_price DECIMAL,
+                            ask_price DECIMAL,
+                            spread DECIMAL
+                        ) ON COMMIT DROP
+                    ''')
+                    
+                    # Use copy_records_to_table for bulk insert into temp table
+                    await conn.copy_records_to_table(
+                        'temp_crypto',
+                        records=batch_data,
+                        columns=['symbol', 'last_price', 'price_change_percent_24h', 
+                                'high_price_24h', 'low_price_24h', 'quote_volume_24h',
+                                'bid_price', 'ask_price', 'spread']
+                    )
+                    
+                    # Upsert from temp to main table
+                    result = await conn.execute('''
                         INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
                             high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        SELECT symbol, last_price, price_change_percent_24h, 
+                            high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread
+                        FROM temp_crypto
                         ON CONFLICT (symbol) DO UPDATE SET
                             last_price = EXCLUDED.last_price,
                             price_change_percent_24h = EXCLUDED.price_change_percent_24h,
@@ -279,18 +305,18 @@ class BinanceWebSocketClient:
                             bid_price = EXCLUDED.bid_price,
                             ask_price = EXCLUDED.ask_price,
                             spread = EXCLUDED.spread
-                    ''', batch_data)
+                    ''')
+                    
+                    elapsed = time.time() - start_time
+                    self.stats['db_updates'] += 1
+                    self.stats['last_update'] = time.time()
+                    
+                    logger.info(f"✅ Upserted {len(batch_data)} symbols in {elapsed:.2f}s ({result})")
                     
                 except Exception as e:
-                    logger.error(f"   Batch insert failed: {e}")
+                    logger.error(f"   COPY upsert failed: {e}")
                     import traceback
                     logger.error(traceback.format_exc())
-            
-            elapsed = time.time() - start_time
-            self.stats['db_updates'] += 1
-            self.stats['last_update'] = time.time()
-            
-            logger.info(f"✅ Batch upserted {len(batch_data)} symbols in {elapsed:.2f}s")
             
         except Exception as e:
             import traceback
