@@ -246,18 +246,27 @@ class BinanceWebSocketClient:
             # Use sync_to_async for Django ORM with bulk update
             @sync_to_async
             def batch_update():
-                symbols_list = list(ticker_snapshot.keys())
+                import time as sync_time
+                start = sync_time.time()
+                
+                # Only update USDT pairs for now (most important)
+                symbols_list = [s for s in ticker_snapshot.keys() if s.endswith('USDT')]
+                logger.info(f"   Filtering to {len(symbols_list)} USDT pairs...")
                 
                 # Get existing records with their IDs
+                logger.info(f"   Fetching existing records...")
                 existing_records = {
                     record.symbol: record 
                     for record in CryptoData.objects.filter(symbol__in=symbols_list)
                 }
+                logger.info(f"   Found {len(existing_records)} existing records ({sync_time.time() - start:.1f}s)")
                 
                 records_to_update = []
                 records_to_create = []
                 
                 for symbol, data in ticker_snapshot.items():
+                    if not symbol.endswith('USDT'):
+                        continue
                     try:
                         klines = kline_snapshot.get(symbol, [])
                         metrics = self._calculate_metrics(data, klines)
@@ -280,18 +289,22 @@ class BinanceWebSocketClient:
                 created_count = 0
                 
                 if records_to_update:
+                    logger.info(f"   Updating {len(records_to_update)} records...")
                     # Use bulk_update for existing records
                     CryptoData.objects.bulk_update(
                         records_to_update,
                         ['last_price', 'price_change_percent_24h', 'high_price_24h', 
                          'low_price_24h', 'quote_volume_24h', 'bid_price', 'ask_price', 'spread'],
-                        batch_size=500
+                        batch_size=100
                     )
                     updated_count = len(records_to_update)
+                    logger.info(f"   Updated {updated_count} records ({sync_time.time() - start:.1f}s)")
                 
                 if records_to_create:
-                    CryptoData.objects.bulk_create(records_to_create, batch_size=500)
+                    logger.info(f"   Creating {len(records_to_create)} new records...")
+                    CryptoData.objects.bulk_create(records_to_create, batch_size=100)
                     created_count = len(records_to_create)
+                    logger.info(f"   Created {created_count} records ({sync_time.time() - start:.1f}s)")
                 
                 return updated_count, created_count
             
@@ -303,7 +316,9 @@ class BinanceWebSocketClient:
             logger.info(f"💾 DB Updated: {updated_count} updated, {created_count} created")
             
         except Exception as e:
+            import traceback
             logger.error(f"Database update failed: {e}")
+            logger.error(traceback.format_exc())
             self.stats['errors'] += 1
     
     def _calculate_metrics(self, ticker_data: dict, klines: list) -> dict:
