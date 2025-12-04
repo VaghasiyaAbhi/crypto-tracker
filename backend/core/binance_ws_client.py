@@ -241,36 +241,63 @@ class BinanceWebSocketClient:
             # Clear buffers immediately to accept new data
             self.ticker_data_buffer.clear()
             
-            updated_count = 0
+            logger.info(f"📝 Starting DB update for {len(ticker_snapshot)} symbols...")
             
-            # Use sync_to_async for Django ORM
+            # Use sync_to_async for Django ORM with bulk update
             @sync_to_async
             def batch_update():
-                nonlocal updated_count
-                with transaction.atomic():
-                    for symbol, data in ticker_snapshot.items():
-                        try:
-                            # Calculate additional metrics from kline data if available
-                            klines = kline_snapshot.get(symbol, [])
-                            metrics = self._calculate_metrics(data, klines)
-                            
-                            # Update or create the record
-                            CryptoData.objects.update_or_create(
-                                symbol=symbol,
-                                defaults=metrics
-                            )
-                            updated_count += 1
-                        except Exception as e:
-                            logger.error(f"Failed to update {symbol}: {e}")
+                # Prepare all records first
+                records_to_update = []
+                records_to_create = []
                 
-                return updated_count
+                # Get existing symbols
+                existing_symbols = set(
+                    CryptoData.objects.filter(
+                        symbol__in=list(ticker_snapshot.keys())
+                    ).values_list('symbol', flat=True)
+                )
+                
+                for symbol, data in ticker_snapshot.items():
+                    try:
+                        klines = kline_snapshot.get(symbol, [])
+                        metrics = self._calculate_metrics(data, klines)
+                        
+                        if symbol in existing_symbols:
+                            # Update existing
+                            record = CryptoData(symbol=symbol, **{k: v for k, v in metrics.items() if k != 'symbol'})
+                            records_to_update.append(record)
+                        else:
+                            # Create new
+                            records_to_create.append(CryptoData(**metrics))
+                    except Exception as e:
+                        logger.error(f"Failed to prepare {symbol}: {e}")
+                
+                # Bulk operations
+                updated_count = 0
+                created_count = 0
+                
+                if records_to_update:
+                    # Use bulk_update for existing records
+                    CryptoData.objects.bulk_update(
+                        records_to_update,
+                        ['last_price', 'price_change_percent_24h', 'high_price_24h', 
+                         'low_price_24h', 'quote_volume_24h', 'bid_price', 'ask_price', 'spread'],
+                        batch_size=500
+                    )
+                    updated_count = len(records_to_update)
+                
+                if records_to_create:
+                    CryptoData.objects.bulk_create(records_to_create, batch_size=500)
+                    created_count = len(records_to_create)
+                
+                return updated_count, created_count
             
-            updated_count = await batch_update()
+            updated_count, created_count = await batch_update()
             
             self.stats['db_updates'] += 1
             self.stats['last_update'] = time.time()
             
-            logger.info(f"💾 DB Updated: {updated_count} symbols (ticker msgs: {self.stats['ticker_messages']})")
+            logger.info(f"💾 DB Updated: {updated_count} updated, {created_count} created")
             
         except Exception as e:
             logger.error(f"Database update failed: {e}")
