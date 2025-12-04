@@ -1025,6 +1025,29 @@ export default function DashboardPage() {
       // Reset session state for new currency
       setIsNewSession(true);
       setSessionSortOrder([]);
+      
+      // Safety timeout: If no data arrives within 15 seconds, stop loading and show error
+      const currencyChangeTimeout = setTimeout(() => {
+        // Only trigger if still loading AND no data for this currency
+        if (isMountedRef.current && baseCurrencyRef.current === baseCurrency) {
+          // Check if we have any data for the current currency
+          setCryptoData(currentData => {
+            if (currentData.length === 0) {
+              console.warn(`⏱️ Currency change timeout for ${baseCurrency} - no data received`);
+              setLoading(false);
+              setError(`No data available for ${baseCurrency}. Try a different currency or refresh the page.`);
+            }
+            return currentData;
+          });
+        }
+      }, 15000);
+      
+      // Clean up timeout on next currency change
+      return () => clearTimeout(currencyChangeTimeout);
+    } else {
+      console.warn('⚠️ WebSocket not connected, cannot request currency data');
+      setLoading(false);
+      setError('WebSocket disconnected. Please refresh the page.');
     }
   }, [baseCurrency]);
 

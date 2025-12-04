@@ -30,19 +30,21 @@ _active_symbols_cache = {
 }
 
 # ========================================
-# GLOBAL CACHE FOR LIVE KLINES DATA (LEGACY)
+# GLOBAL CACHE FOR LIVE KLINES DATA
 # ========================================
-# NOTE: This cache is now mostly unused since we read from DB directly.
-# The database is updated every 3 seconds by the Binance WebSocket client.
-# Keeping this for backwards compatibility.
+# Used for caching expensive Binance API klines data
+# Cache is shared across all WebSocket connections
 _klines_cache = {
     'USDT': {'data': None, 'last_updated': 0},
     'USDC': {'data': None, 'last_updated': 0},
     'FDUSD': {'data': None, 'last_updated': 0},
     'BNB': {'data': None, 'last_updated': 0},
     'BTC': {'data': None, 'last_updated': 0},
+    'EUR': {'data': None, 'last_updated': 0},
+    'TRY': {'data': None, 'last_updated': 0},
+    'ETH': {'data': None, 'last_updated': 0},
 }
-KLINES_CACHE_TTL = 3  # 3 seconds - DB is updated every 3 seconds by WebSocket
+KLINES_CACHE_TTL = 5  # 5 seconds - gives enough time for data to be fetched
 
 def get_active_trading_symbols():
     """
