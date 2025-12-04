@@ -232,12 +232,14 @@ class BinanceWebSocketClient:
     
     def _sync_bulk_update(self, updates: list):
         """Synchronous bulk update using Django ORM with batch INSERT"""
-        from core.models import CryptoData
-        from django.db import connection
+        from django.db import connection, close_old_connections
         from psycopg2.extras import execute_values
         
         if not updates:
             return 0
+        
+        # Close stale connections first
+        close_old_connections()
         
         # Prepare data as list of tuples
         data = []
@@ -256,6 +258,9 @@ class BinanceWebSocketClient:
         
         # Use execute_values for fast batch upsert
         try:
+            # Ensure connection is open
+            connection.ensure_connection()
+            
             with connection.cursor() as cursor:
                 execute_values(
                     cursor,
@@ -282,6 +287,9 @@ class BinanceWebSocketClient:
             import traceback
             logger.error(traceback.format_exc())
             return 0
+        finally:
+            # Close connection to prevent stale connections
+            close_old_connections()
     
     def _calculate_metrics(self, ticker_data: dict) -> dict:
         """Calculate all metrics from ticker data"""
