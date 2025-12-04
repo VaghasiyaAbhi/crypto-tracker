@@ -30,6 +30,7 @@ requests==2.32.5
 
 # Database
 psycopg2-binary==2.9.10
+asyncpg==0.30.0
 
 # Authentication and security
 firebase_admin==7.1.0

@@ -14,8 +14,8 @@ Benefits:
 import json
 import asyncio
 import logging
+import os
 import time
-from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from typing import Dict, List, Optional
 import websockets
@@ -29,8 +29,8 @@ BINANCE_WS_URL = "wss://stream.binance.com:9443/ws"
 _ws_client = None
 _is_running = False
 
-# Thread pool for database operations
-_db_executor = ThreadPoolExecutor(max_workers=2)
+# Async DB connection pool (using asyncpg)
+_db_pool = None
 
 
 class BinanceWebSocketClient:
@@ -46,6 +46,7 @@ class BinanceWebSocketClient:
         self.ticker_data_buffer = {}  # Buffer ticker data for batch DB updates
         self.kline_data_buffer = {}   # Buffer kline data
         self.update_interval = 3      # Update DB every 3 seconds
+        self.db_pool = None           # Async database pool
         
         # Statistics
         self.stats = {
@@ -59,6 +60,9 @@ class BinanceWebSocketClient:
     async def connect(self):
         """Connect to Binance WebSocket streams"""
         try:
+            # Initialize database pool first
+            await self._init_db_pool()
+            
             # Use simple single-stream URL for ticker data
             url = f"{BINANCE_WS_URL}/!ticker@arr"
             
@@ -85,6 +89,50 @@ class BinanceWebSocketClient:
             logger.error(f"❌ WebSocket connection failed: {e}")
             self.is_connected = False
             await self._reconnect()
+    
+    async def _init_db_pool(self):
+        """Initialize asyncpg connection pool"""
+        try:
+            import asyncpg
+            
+            # Get database settings from environment
+            db_host = os.getenv('DB_HOST', 'localhost')
+            db_name = os.getenv('DB_NAME', 'crypto_tracker')
+            db_user = os.getenv('DB_USER', 'postgres')
+            db_password = os.getenv('DB_PASSWORD', 'postgres')
+            db_port = os.getenv('DB_PORT', '5432')
+            
+            # Check for DATABASE_URL first (Heroku style)
+            database_url = os.getenv('DATABASE_URL')
+            
+            if database_url:
+                logger.info(f"📦 Creating asyncpg pool from DATABASE_URL...")
+                self.db_pool = await asyncpg.create_pool(
+                    database_url,
+                    min_size=1,
+                    max_size=5,
+                    command_timeout=30
+                )
+            else:
+                logger.info(f"📦 Creating asyncpg pool: {db_user}@{db_host}:{db_port}/{db_name}")
+                self.db_pool = await asyncpg.create_pool(
+                    host=db_host,
+                    database=db_name,
+                    user=db_user,
+                    password=db_password,
+                    port=int(db_port),
+                    min_size=1,
+                    max_size=5,
+                    command_timeout=30
+                )
+            
+            logger.info(f"✅ Database pool created successfully!")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to create database pool: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise
     
     async def _listen(self):
         """Listen for incoming WebSocket messages"""
@@ -159,7 +207,7 @@ class BinanceWebSocketClient:
                 logger.error(f"DB update loop error: {e}")
     
     async def _update_database(self):
-        """Update database with buffered ticker data"""
+        """Update database with buffered ticker data using asyncpg"""
         try:
             # Copy and clear buffers immediately
             ticker_snapshot = dict(self.ticker_data_buffer)
@@ -174,99 +222,70 @@ class BinanceWebSocketClient:
             symbols_list = [s for s in ticker_snapshot.keys() if s.endswith('USDT')]
             logger.info(f"   Filtering to {len(symbols_list)} USDT pairs...")
             
-            # For now, just log what would be updated (skip actual DB update)
-            # This proves the WebSocket is working
-            sample_symbols = symbols_list[:5]
-            for symbol in sample_symbols:
-                data = ticker_snapshot.get(symbol)
-                if data:
-                    logger.info(f"   {symbol}: ${float(data.get('last_price', 0)):.2f}")
+            if not self.db_pool:
+                logger.warning("   No database pool available!")
+                return
             
+            start_time = time.time()
+            updated = 0
+            inserted = 0
+            
+            # Use asyncpg for async database operations
+            async with self.db_pool.acquire() as conn:
+                # Process in batches
+                for symbol in symbols_list[:500]:  # Limit to 500 to be safe
+                    try:
+                        data = ticker_snapshot.get(symbol)
+                        if not data:
+                            continue
+                        
+                        metrics = self._calculate_metrics(data)
+                        
+                        # Use PostgreSQL UPSERT
+                        result = await conn.execute('''
+                            INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
+                                high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                            ON CONFLICT (symbol) DO UPDATE SET
+                                last_price = EXCLUDED.last_price,
+                                price_change_percent_24h = EXCLUDED.price_change_percent_24h,
+                                high_price_24h = EXCLUDED.high_price_24h,
+                                low_price_24h = EXCLUDED.low_price_24h,
+                                quote_volume_24h = EXCLUDED.quote_volume_24h,
+                                bid_price = EXCLUDED.bid_price,
+                                ask_price = EXCLUDED.ask_price,
+                                spread = EXCLUDED.spread
+                        ''', 
+                            symbol,
+                            float(metrics['last_price']),
+                            float(metrics['price_change_percent_24h']),
+                            float(metrics['high_price_24h']),
+                            float(metrics['low_price_24h']),
+                            float(metrics['quote_volume_24h']),
+                            float(metrics['bid_price']),
+                            float(metrics['ask_price']),
+                            float(metrics['spread'])
+                        )
+                        
+                        if 'INSERT' in result:
+                            inserted += 1
+                        else:
+                            updated += 1
+                            
+                    except Exception as e:
+                        logger.error(f"   Failed to update {symbol}: {e}")
+            
+            elapsed = time.time() - start_time
             self.stats['db_updates'] += 1
             self.stats['last_update'] = time.time()
             
-            logger.info(f"💾 Would update {len(symbols_list)} symbols (DB updates temporarily disabled)")
+            logger.info(f"✅ Updated {updated}, inserted {inserted} symbols in {elapsed:.2f}s")
             
         except Exception as e:
             import traceback
             logger.error(f"Database update failed: {e}")
             logger.error(traceback.format_exc())
             self.stats['errors'] += 1
-    
-    def _do_db_update(self, ticker_snapshot):
-        """Synchronous database update - runs in thread pool"""
-        from core.models import CryptoData
-        from django.db import connection as db_conn
-        
-        import time as sync_time
-        start = sync_time.time()
-        
-        # Only update USDT pairs for now
-        symbols_list = [s for s in ticker_snapshot.keys() if s.endswith('USDT')]
-        logger.info(f"   Filtering to {len(symbols_list)} USDT pairs...")
-        
-        # Use raw SQL for faster updates
-        updated_count = 0
-        
-        try:
-            # Build batch UPSERT query
-            values = []
-            for symbol in symbols_list[:100]:  # Limit to top 100 for now
-                data = ticker_snapshot.get(symbol)
-                if not data:
-                    continue
-                
-                try:
-                    metrics = self._calculate_metrics(data)
-                    values.append((
-                        symbol,
-                        float(metrics['last_price']),
-                        float(metrics['price_change_percent_24h']),
-                        float(metrics['high_price_24h']),
-                        float(metrics['low_price_24h']),
-                        float(metrics['quote_volume_24h']),
-                        float(metrics['bid_price']),
-                        float(metrics['ask_price']),
-                        float(metrics['spread'])
-                    ))
-                except Exception as e:
-                    logger.error(f"   Failed to prepare {symbol}: {e}")
-            
-            if values:
-                logger.info(f"   Executing batch upsert for {len(values)} symbols...")
-                
-                # Execute as batch
-                with db_conn.cursor() as cursor:
-                    from psycopg2.extras import execute_values
-                    execute_values(
-                        cursor,
-                        """INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
-                            high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
-                        VALUES %s
-                        ON CONFLICT (symbol) DO UPDATE SET
-                            last_price = EXCLUDED.last_price,
-                            price_change_percent_24h = EXCLUDED.price_change_percent_24h,
-                            high_price_24h = EXCLUDED.high_price_24h,
-                            low_price_24h = EXCLUDED.low_price_24h,
-                            quote_volume_24h = EXCLUDED.quote_volume_24h,
-                            bid_price = EXCLUDED.bid_price,
-                            ask_price = EXCLUDED.ask_price,
-                            spread = EXCLUDED.spread""",
-                        values,
-                        page_size=100
-                    )
-                updated_count = len(values)
-        except Exception as e:
-            logger.error(f"   Database error: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-        
-        logger.info(f"   Upserted {updated_count} records ({sync_time.time() - start:.1f}s)")
-        
-        # Close the database connection for this thread
-        db_conn.close()
-        
-        return updated_count, 0
     
     def _calculate_metrics(self, ticker_data: dict) -> dict:
         """Calculate all metrics from ticker data"""
@@ -302,6 +321,8 @@ class BinanceWebSocketClient:
     async def disconnect(self):
         """Disconnect from WebSocket"""
         self.is_connected = False
+        if self.db_pool:
+            await self.db_pool.close()
         if self.ws:
             await self.ws.close()
             logger.info("🔌 Disconnected from Binance WebSocket")
