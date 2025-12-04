@@ -229,42 +229,57 @@ class BinanceWebSocketClient:
             self.stats['errors'] += 1
     
     def _sync_bulk_update(self, updates: list):
-        """Synchronous bulk update using Django ORM"""
+        """Synchronous bulk update using Django ORM with batch INSERT"""
         from core.models import CryptoData
         from django.db import connection
+        from psycopg2.extras import execute_values
         
-        # Use raw SQL for faster upsert
-        with connection.cursor() as cursor:
-            for item in updates:
-                try:
-                    cursor.execute('''
-                        INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
-                            high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (symbol) DO UPDATE SET
-                            last_price = EXCLUDED.last_price,
-                            price_change_percent_24h = EXCLUDED.price_change_percent_24h,
-                            high_price_24h = EXCLUDED.high_price_24h,
-                            low_price_24h = EXCLUDED.low_price_24h,
-                            quote_volume_24h = EXCLUDED.quote_volume_24h,
-                            bid_price = EXCLUDED.bid_price,
-                            ask_price = EXCLUDED.ask_price,
-                            spread = EXCLUDED.spread
-                    ''', [
-                        item['symbol'],
-                        float(item['last_price']),
-                        float(item['price_change_percent_24h']),
-                        float(item['high_price_24h']),
-                        float(item['low_price_24h']),
-                        float(item['quote_volume_24h']),
-                        float(item['bid_price']),
-                        float(item['ask_price']),
-                        float(item['spread'])
-                    ])
-                except Exception as e:
-                    logger.error(f"Failed to upsert {item.get('symbol')}: {e}")
+        if not updates:
+            return 0
         
-        return len(updates)
+        # Prepare data as list of tuples
+        data = []
+        for item in updates:
+            data.append((
+                item['symbol'],
+                float(item['last_price']),
+                float(item['price_change_percent_24h']),
+                float(item['high_price_24h']),
+                float(item['low_price_24h']),
+                float(item['quote_volume_24h']),
+                float(item['bid_price']),
+                float(item['ask_price']),
+                float(item['spread'])
+            ))
+        
+        # Use execute_values for fast batch upsert
+        try:
+            with connection.cursor() as cursor:
+                execute_values(
+                    cursor,
+                    '''
+                    INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
+                        high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
+                    VALUES %s
+                    ON CONFLICT (symbol) DO UPDATE SET
+                        last_price = EXCLUDED.last_price,
+                        price_change_percent_24h = EXCLUDED.price_change_percent_24h,
+                        high_price_24h = EXCLUDED.high_price_24h,
+                        low_price_24h = EXCLUDED.low_price_24h,
+                        quote_volume_24h = EXCLUDED.quote_volume_24h,
+                        bid_price = EXCLUDED.bid_price,
+                        ask_price = EXCLUDED.ask_price,
+                        spread = EXCLUDED.spread
+                    ''',
+                    data,
+                    page_size=100  # Batch 100 rows at a time
+                )
+            return len(updates)
+        except Exception as e:
+            logger.error(f"Batch upsert failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return 0
     
     def _calculate_metrics(self, ticker_data: dict) -> dict:
         """Calculate all metrics from ticker data"""
