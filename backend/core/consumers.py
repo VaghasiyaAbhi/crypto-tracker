@@ -295,11 +295,12 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             # Get symbols up to page_size
             all_symbols = filtered_data[:min(page_size, 500)]
             
-            # OPTIMIZATION: Only fetch klines for TOP 50 symbols (by volume)
-            # Remaining symbols get ticker data with zero placeholders
-            # This ensures fast updates (< 5 seconds) while top coins get accurate data
-            klines_symbols = all_symbols[:50]  # Top 50 by volume
-            ticker_only_symbols = all_symbols[50:]  # Rest get basic data
+            # OPTIMIZATION: Fetch klines for TOP 100 symbols (by volume)
+            # This balances speed vs coverage - top 100 covers most trading activity
+            # Remaining symbols get ticker data with zero placeholders for metrics
+            KLINES_LIMIT = 100  # Top 100 symbols get full metrics
+            klines_symbols = all_symbols[:KLINES_LIMIT]
+            ticker_only_symbols = all_symbols[KLINES_LIMIT:]
             
             logger.info(f"📊 Fetching klines for TOP {len(klines_symbols)} symbols, ticker data for {len(ticker_only_symbols)} remaining")
             
@@ -430,11 +431,11 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 except Exception as e:
                     return self._basic_ticker_data_with_zeros(ticker_item)
             
-            # OPTIMIZED: Fetch klines for TOP 50 symbols only (fast - under 5 seconds)
+            # Fetch klines for TOP 100 symbols in parallel (should complete in ~5-8 seconds)
             live_data = []
-            with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
                 futures = {executor.submit(fetch_klines_for_symbol, item): item for item in klines_symbols}
-                for future in concurrent.futures.as_completed(futures, timeout=10):
+                for future in concurrent.futures.as_completed(futures, timeout=12):
                     try:
                         result = future.result()
                         if result:
