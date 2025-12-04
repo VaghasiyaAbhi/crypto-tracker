@@ -488,29 +488,40 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 except Exception as e:
                     return self._basic_ticker_data_with_zeros(ticker_item)
             
-            # Fetch klines for ALL symbols with high parallelism (50 workers, 15s timeout)
+            # Fetch klines for ALL symbols with high parallelism
+            # Limit to 300 symbols max to ensure completion within timeout
+            symbols_to_fetch = all_symbols[:300]
+            logger.info(f"📊 Fetching klines for {len(symbols_to_fetch)} symbols (capped at 300) with 50 workers")
+            
             live_data = []
-            with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-                futures = {executor.submit(fetch_klines_for_symbol, item): item for item in all_symbols}
-                for future in concurrent.futures.as_completed(futures, timeout=15):
-                    try:
-                        result = future.result()
-                        if result:
-                            live_data.append(result)
-                    except Exception:
-                        pass
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+                    futures = {executor.submit(fetch_klines_for_symbol, item): item for item in symbols_to_fetch}
+                    for future in concurrent.futures.as_completed(futures, timeout=20):
+                        try:
+                            result = future.result()
+                            if result:
+                                live_data.append(result)
+                        except Exception:
+                            pass
+            except concurrent.futures.TimeoutError:
+                # Timeout occurred, but we still have partial data - use it
+                logger.warning(f"⚠️ Timeout after 20s, using {len(live_data)} symbols that completed")
             
             logger.info(f"✅ Prepared {len(live_data)} symbols with klines data")
             
             # Sort by price change
             live_data.sort(key=lambda x: float(x.get('price_change_percent_24h', 0)), reverse=True)
             
-            # UPDATE CACHE for future requests (instant currency switching)
-            _klines_cache[quote_currency] = {
-                'data': live_data,
-                'last_updated': time.time()
-            }
-            logger.info(f"💾 Cached {len(live_data)} symbols for {quote_currency}")
+            # UPDATE CACHE even with partial data (better than nothing)
+            if len(live_data) >= 50:  # Only cache if we got meaningful data
+                _klines_cache[quote_currency] = {
+                    'data': live_data,
+                    'last_updated': time.time()
+                }
+                logger.info(f"💾 Cached {len(live_data)} symbols for {quote_currency}")
+            else:
+                logger.warning(f"⚠️ Only {len(live_data)} symbols - not caching (need at least 50)")
             
             return live_data
             
