@@ -19,7 +19,6 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from typing import Dict, List, Optional
 import websockets
-from django.db import connection
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +197,7 @@ class BinanceWebSocketClient:
         import django
         django.setup()
         from core.models import CryptoData
+        from django.db import connection as db_conn
         
         import time as sync_time
         start = sync_time.time()
@@ -206,62 +206,61 @@ class BinanceWebSocketClient:
         symbols_list = [s for s in ticker_snapshot.keys() if s.endswith('USDT')]
         logger.info(f"   Filtering to {len(symbols_list)} USDT pairs...")
         
-        # Get existing records with their IDs
-        logger.info(f"   Fetching existing records...")
-        existing_records = {
-            record.symbol: record 
-            for record in CryptoData.objects.filter(symbol__in=symbols_list)
-        }
-        logger.info(f"   Found {len(existing_records)} existing ({sync_time.time() - start:.1f}s)")
-        
-        records_to_update = []
-        records_to_create = []
-        
-        for symbol in symbols_list:
-            data = ticker_snapshot.get(symbol)
-            if not data:
-                continue
-            try:
-                metrics = self._calculate_metrics(data)
-                
-                if symbol in existing_records:
-                    record = existing_records[symbol]
-                    for key, value in metrics.items():
-                        if key != 'symbol':
-                            setattr(record, key, value)
-                    records_to_update.append(record)
-                else:
-                    records_to_create.append(CryptoData(**metrics))
-            except Exception as e:
-                logger.error(f"Failed to prepare {symbol}: {e}")
-        
-        # Update records
+        # Use raw SQL for faster updates
         updated_count = 0
         created_count = 0
         
-        if records_to_update:
-            logger.info(f"   Updating {len(records_to_update)} records...")
-            for record in records_to_update:
-                try:
-                    record.save(update_fields=[
-                        'last_price', 'price_change_percent_24h', 'high_price_24h',
-                        'low_price_24h', 'quote_volume_24h', 'bid_price', 'ask_price', 'spread'
-                    ])
-                    updated_count += 1
-                except Exception as e:
-                    logger.error(f"   Failed to save {record.symbol}: {e}")
-            logger.info(f"   Updated {updated_count} ({sync_time.time() - start:.1f}s)")
+        try:
+            with db_conn.cursor() as cursor:
+                for symbol in symbols_list[:100]:  # Limit to top 100 for now
+                    data = ticker_snapshot.get(symbol)
+                    if not data:
+                        continue
+                    
+                    try:
+                        metrics = self._calculate_metrics(data)
+                        
+                        # Use UPSERT (INSERT ... ON CONFLICT UPDATE)
+                        cursor.execute("""
+                            INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
+                                high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (symbol) DO UPDATE SET
+                                last_price = EXCLUDED.last_price,
+                                price_change_percent_24h = EXCLUDED.price_change_percent_24h,
+                                high_price_24h = EXCLUDED.high_price_24h,
+                                low_price_24h = EXCLUDED.low_price_24h,
+                                quote_volume_24h = EXCLUDED.quote_volume_24h,
+                                bid_price = EXCLUDED.bid_price,
+                                ask_price = EXCLUDED.ask_price,
+                                spread = EXCLUDED.spread
+                        """, [
+                            symbol,
+                            float(metrics['last_price']),
+                            float(metrics['price_change_percent_24h']),
+                            float(metrics['high_price_24h']),
+                            float(metrics['low_price_24h']),
+                            float(metrics['quote_volume_24h']),
+                            float(metrics['bid_price']),
+                            float(metrics['ask_price']),
+                            float(metrics['spread'])
+                        ])
+                        updated_count += 1
+                    except Exception as e:
+                        logger.error(f"   Failed to upsert {symbol}: {e}")
+                
+                db_conn.commit()
+        except Exception as e:
+            logger.error(f"   Database error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
         
-        if records_to_create:
-            logger.info(f"   Creating {len(records_to_create)} new records...")
-            CryptoData.objects.bulk_create(records_to_create, batch_size=50)
-            created_count = len(records_to_create)
-            logger.info(f"   Created {created_count} ({sync_time.time() - start:.1f}s)")
+        logger.info(f"   Upserted {updated_count} records ({sync_time.time() - start:.1f}s)")
         
         # Close the database connection for this thread
-        connection.close()
+        db_conn.close()
         
-        return updated_count, created_count
+        return updated_count, 0
     
     def _calculate_metrics(self, ticker_data: dict) -> dict:
         """Calculate all metrics from ticker data"""
