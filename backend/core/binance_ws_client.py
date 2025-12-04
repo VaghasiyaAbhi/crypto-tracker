@@ -150,20 +150,24 @@ class BinanceWebSocketClient:
             }
     
     async def _db_update_loop(self):
-        """Background loop to update database with buffered data"""
-        logger.info("🔄 DB update loop started")
+        """Background loop to log statistics (DB updates handled by calc-worker)"""
+        logger.info("🔄 Stats monitoring loop started (DB updates via calc-worker)")
         while self.is_connected:
             try:
-                await asyncio.sleep(self.update_interval)
+                await asyncio.sleep(30)  # Log stats every 30 seconds
                 
                 buffer_size = len(self.ticker_data_buffer)
-                logger.info(f"🔄 DB update loop tick - buffered: {buffer_size} symbols")
+                # Just log stats, don't try to update DB (calc-worker does that)
+                logger.info(f"� Stats: Ticker msgs: {self.stats['ticker_messages']}, "
+                           f"Buffered: {buffer_size} symbols")
                 
-                if self.ticker_data_buffer:
-                    await self._update_database()
+                # Clear buffer periodically to prevent memory buildup
+                if buffer_size > 2000:
+                    self.ticker_data_buffer.clear()
+                    logger.info("   Cleared buffer (memory management)")
                     
             except Exception as e:
-                logger.error(f"DB update loop error: {e}")
+                logger.error(f"Stats loop error: {e}")
     
     async def _update_database(self):
         """Update database with buffered ticker data using Django ORM in a thread"""
