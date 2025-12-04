@@ -246,7 +246,7 @@ class BinanceWebSocketClient:
             asks = []
             spreads = []
             
-            for symbol in symbols_list[:100]:  # Limit to 100 for faster updates
+            for symbol in symbols_list[:350]:  # Update 350 USDT pairs per cycle
                 data = ticker_snapshot.get(symbol)
                 if not data:
                     continue
