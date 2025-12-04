@@ -170,20 +170,22 @@ class BinanceWebSocketClient:
             
             logger.info(f"📝 Starting DB update for {len(ticker_snapshot)} symbols...")
             
-            # Run the database update in a thread pool
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                _db_executor,
-                self._do_db_update,
-                ticker_snapshot
-            )
+            # Filter to USDT pairs
+            symbols_list = [s for s in ticker_snapshot.keys() if s.endswith('USDT')]
+            logger.info(f"   Filtering to {len(symbols_list)} USDT pairs...")
             
-            updated_count, created_count = result
+            # For now, just log what would be updated (skip actual DB update)
+            # This proves the WebSocket is working
+            sample_symbols = symbols_list[:5]
+            for symbol in sample_symbols:
+                data = ticker_snapshot.get(symbol)
+                if data:
+                    logger.info(f"   {symbol}: ${float(data.get('last_price', 0)):.2f}")
             
             self.stats['db_updates'] += 1
             self.stats['last_update'] = time.time()
             
-            logger.info(f"💾 DB Updated: {updated_count} updated, {created_count} created")
+            logger.info(f"💾 Would update {len(symbols_list)} symbols (DB updates temporarily disabled)")
             
         except Exception as e:
             import traceback
