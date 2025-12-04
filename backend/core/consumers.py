@@ -213,9 +213,8 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 serializer_class = CryptoDataFreeSerializer
 
             # ========================================
-            # OPTIMIZATION: Check if we have fresh klines cache for this currency
-            # If yes, send cached live data immediately, then fetch fresh in background
-            # This prevents flickering while ensuring data stays up-to-date every 10s
+            # OPTIMIZATION: Send cached data immediately to prevent flickering,
+            # then ALWAYS fetch fresh data in background for real-time accuracy
             # ========================================
             cache_entry = _klines_cache.get(quote_currency) if not fetch_all_currencies else None
             has_cache = (cache_entry and cache_entry['data'] and len(cache_entry['data']) > 0)
@@ -223,7 +222,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             
             if has_cache and user_plan in ['basic', 'enterprise']:
                 # FAST PATH: Send cached data immediately (prevents flickering)
-                logger.info(f"⚡ FAST PATH: Sending cached klines data for {quote_currency} (age: {cache_age:.1f}s)")
+                logger.info(f"⚡ FAST PATH: Sending cached data for {quote_currency} (age: {cache_age:.1f}s)")
                 
                 await self.send(text_data=json.dumps({
                     'type': 'live_update',
@@ -234,11 +233,13 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                     'data': cache_entry['data'][:page_size],
                 }, cls=DecimalEncoder))
                 
-                # ALWAYS fetch fresh data in background if cache is older than 8 seconds
-                # This ensures every 10-second refresh gets new data
-                if cache_age > 8:
-                    logger.info(f"🔄 Refreshing cache in background (age: {cache_age:.1f}s)")
+                # ALWAYS fetch fresh data in background (for real-time 10s updates)
+                # Only skip if cache is very fresh (< 5 seconds) to prevent duplicate fetches
+                if cache_age > 5:
+                    logger.info(f"🔄 Fetching fresh data in background (cache age: {cache_age:.1f}s)")
                     asyncio.create_task(self._send_live_update(quote_currency, 500))
+                else:
+                    logger.info(f"⏭️ Cache is fresh enough ({cache_age:.1f}s < 5s), skipping background fetch")
                 return  # Skip database snapshot entirely
             
             # SLOW PATH: No cache available, send database snapshot first
