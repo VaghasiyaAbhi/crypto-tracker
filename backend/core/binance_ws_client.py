@@ -45,7 +45,7 @@ class BinanceWebSocketClient:
         self.reconnect_delay = 5  # seconds
         self.ticker_data_buffer = {}  # Buffer ticker data for batch DB updates
         self.kline_data_buffer = {}   # Buffer kline data
-        self.update_interval = 3      # Update DB every 3 seconds
+        self.update_interval = 10     # Update DB every 10 seconds (slower for external DB)
         self.db_pool = None           # Async database pool
         
         # Statistics
@@ -126,7 +126,7 @@ class BinanceWebSocketClient:
                 port=int(db_port),
                 min_size=1,
                 max_size=3,
-                command_timeout=120,  # Increase timeout to 2 minutes
+                command_timeout=300,  # Increase timeout to 5 minutes for external DB
                 statement_cache_size=0  # Disable statement caching for dynamic queries
             )
             
@@ -248,7 +248,7 @@ class BinanceWebSocketClient:
             asks = []
             spreads = []
             
-            for symbol in symbols_list[:500]:  # Update 500 pairs per cycle (all currencies)
+            for symbol in symbols_list[:200]:  # Update 200 pairs per cycle (faster with external DB)
                 data = ticker_snapshot.get(symbol)
                 if not data:
                     continue

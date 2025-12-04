@@ -168,7 +168,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
 
     async def _auto_refresh_loop(self):
         """
-        Automatically send fresh data to premium users every 3 seconds.
+        Automatically send fresh data to premium users every 5 seconds.
         Data comes from the database which is updated by Binance WebSocket.
         """
         try:
@@ -176,7 +176,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             await asyncio.sleep(2)
             
             while True:
-                await asyncio.sleep(3)  # Refresh every 3 seconds
+                await asyncio.sleep(5)  # Refresh every 5 seconds
                 try:
                     # Get current currency (updated by request_snapshot messages)
                     currency = getattr(self, 'current_currency', 'USDT')
