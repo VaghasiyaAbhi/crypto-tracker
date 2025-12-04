@@ -222,8 +222,8 @@ class BinanceWebSocketClient:
             
             logger.info(f"📝 Starting DB update for {len(ticker_snapshot)} symbols...")
             
-            # Filter to USDT pairs only
-            symbols_list = [s for s in ticker_snapshot.keys() if s.endswith('USDT')]
+            # Filter to USDT pairs only and SORT to prevent deadlocks
+            symbols_list = sorted([s for s in ticker_snapshot.keys() if s.endswith('USDT')])
             logger.info(f"   Filtering to {len(symbols_list)} USDT pairs...")
             
             if not self.db_pool:
@@ -235,7 +235,7 @@ class BinanceWebSocketClient:
             
             start_time = time.time()
             
-            # Prepare arrays for UNNEST
+            # Prepare arrays for UNNEST (sort order preserved)
             symbols = []
             last_prices = []
             changes = []
@@ -270,35 +270,44 @@ class BinanceWebSocketClient:
             
             logger.info(f"   Prepared {len(symbols)} records, using UNNEST batch upsert...")
             
-            # Use UNNEST for single-query batch upsert (fastest approach)
-            async with self.db_pool.acquire() as conn:
+            # Retry loop for deadlocks
+            for attempt in range(3):
                 try:
-                    result = await conn.execute('''
-                        INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
-                            high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
-                        SELECT * FROM UNNEST($1::varchar[], $2::decimal[], $3::decimal[], 
-                            $4::decimal[], $5::decimal[], $6::decimal[], $7::decimal[], $8::decimal[], $9::decimal[])
-                        ON CONFLICT (symbol) DO UPDATE SET
-                            last_price = EXCLUDED.last_price,
-                            price_change_percent_24h = EXCLUDED.price_change_percent_24h,
-                            high_price_24h = EXCLUDED.high_price_24h,
-                            low_price_24h = EXCLUDED.low_price_24h,
-                            quote_volume_24h = EXCLUDED.quote_volume_24h,
-                            bid_price = EXCLUDED.bid_price,
-                            ask_price = EXCLUDED.ask_price,
-                            spread = EXCLUDED.spread
-                    ''', symbols, last_prices, changes, highs, lows, volumes, bids, asks, spreads)
-                    
-                    elapsed = time.time() - start_time
-                    self.stats['db_updates'] += 1
-                    self.stats['last_update'] = time.time()
-                    
-                    logger.info(f"✅ Upserted {len(symbols)} symbols in {elapsed:.2f}s ({result})")
-                    
+                    async with self.db_pool.acquire() as conn:
+                        result = await conn.execute('''
+                            INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
+                                high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
+                            SELECT * FROM UNNEST($1::varchar[], $2::decimal[], $3::decimal[], 
+                                $4::decimal[], $5::decimal[], $6::decimal[], $7::decimal[], $8::decimal[], $9::decimal[])
+                            ON CONFLICT (symbol) DO UPDATE SET
+                                last_price = EXCLUDED.last_price,
+                                price_change_percent_24h = EXCLUDED.price_change_percent_24h,
+                                high_price_24h = EXCLUDED.high_price_24h,
+                                low_price_24h = EXCLUDED.low_price_24h,
+                                quote_volume_24h = EXCLUDED.quote_volume_24h,
+                                bid_price = EXCLUDED.bid_price,
+                                ask_price = EXCLUDED.ask_price,
+                                spread = EXCLUDED.spread
+                        ''', symbols, last_prices, changes, highs, lows, volumes, bids, asks, spreads)
+                        
+                        elapsed = time.time() - start_time
+                        self.stats['db_updates'] += 1
+                        self.stats['last_update'] = time.time()
+                        
+                        logger.info(f"✅ Upserted {len(symbols)} symbols in {elapsed:.2f}s ({result})")
+                        break  # Success, exit retry loop
+                        
                 except Exception as e:
-                    logger.error(f"   UNNEST upsert failed: {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
+                    error_msg = str(e).lower()
+                    if 'deadlock' in error_msg and attempt < 2:
+                        logger.warning(f"   Deadlock detected, retrying ({attempt + 1}/3)...")
+                        await asyncio.sleep(0.5 * (attempt + 1))  # Backoff
+                        continue
+                    else:
+                        logger.error(f"   UNNEST upsert failed: {e}")
+                        import traceback
+                        logger.error(traceback.format_exc())
+                        break
             
         except Exception as e:
             import traceback
