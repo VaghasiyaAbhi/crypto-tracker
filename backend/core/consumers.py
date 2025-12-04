@@ -261,7 +261,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             return None
     
     def _sync_fetch_live_data(self, quote_currency: str, page_size: int):
-        """Synchronous helper to fetch live data from Binance"""
+        """Synchronous helper to fetch live data from Binance - OPTIMIZED for speed"""
         try:
             # Step 0: Get active trading symbols from cache (filters out delisted)
             active_trading_symbols = get_active_trading_symbols()
@@ -270,7 +270,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 logger.error("❌ No active trading symbols available")
                 return None
             
-            # Step 1: Fetch 24hr ticker data
+            # Step 1: Fetch 24hr ticker data (this is fast - single API call)
             response = requests.get('https://api.binance.com/api/v3/ticker/24hr', timeout=10)
             response.raise_for_status()
             binance_data = response.json()
@@ -295,9 +295,15 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             # Get symbols up to page_size
             all_symbols = filtered_data[:min(page_size, 500)]
             
-            logger.info(f"📊 Fetching klines for ALL {len(all_symbols)} symbols (no N/A)")
+            # OPTIMIZATION: Only fetch klines for TOP 50 symbols (by volume)
+            # Remaining symbols get ticker data with zero placeholders
+            # This ensures fast updates (< 5 seconds) while top coins get accurate data
+            klines_symbols = all_symbols[:50]  # Top 50 by volume
+            ticker_only_symbols = all_symbols[50:]  # Rest get basic data
             
-            # Step 2: Fetch klines for ALL symbols in parallel with rate limit handling
+            logger.info(f"📊 Fetching klines for TOP {len(klines_symbols)} symbols, ticker data for {len(ticker_only_symbols)} remaining")
+            
+            # Step 2: Fetch klines for TOP 50 symbols in parallel
             def fetch_klines_for_symbol(ticker_item):
                 symbol = ticker_item['symbol']
                 current_price = float(ticker_item['lastPrice'])
@@ -305,12 +311,11 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 try:
                     # Fetch 65 candles to properly calculate 60-minute metrics
                     klines_url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1m&limit=65"
-                    klines_response = requests.get(klines_url, timeout=8)
+                    klines_response = requests.get(klines_url, timeout=3)  # Fast timeout
                     
                     if klines_response.status_code == 429:
-                        # Rate limited - wait and retry once
-                        time.sleep(0.5)
-                        klines_response = requests.get(klines_url, timeout=8)
+                        # Rate limited - skip instead of retry to keep it fast
+                        return self._basic_ticker_data_with_zeros(ticker_item)
                     
                     if klines_response.status_code != 200:
                         return self._basic_ticker_data_with_zeros(ticker_item)
@@ -425,18 +430,23 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 except Exception as e:
                     return self._basic_ticker_data_with_zeros(ticker_item)
             
-            # Use ThreadPoolExecutor for parallel klines fetching for ALL symbols
-            # Use 20 workers to process faster (Binance allows ~1200 requests/minute)
+            # OPTIMIZED: Fetch klines for TOP 50 symbols only (fast - under 5 seconds)
             live_data = []
-            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-                futures = {executor.submit(fetch_klines_for_symbol, item): item for item in all_symbols}
-                for future in concurrent.futures.as_completed(futures, timeout=30):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+                futures = {executor.submit(fetch_klines_for_symbol, item): item for item in klines_symbols}
+                for future in concurrent.futures.as_completed(futures, timeout=10):
                     try:
                         result = future.result()
                         if result:
                             live_data.append(result)
                     except Exception:
                         pass
+            
+            # Add ticker-only data for remaining symbols (with zero placeholders for klines fields)
+            for item in ticker_only_symbols:
+                live_data.append(self._basic_ticker_data_with_zeros(item))
+            
+            logger.info(f"✅ Prepared {len(live_data)} symbols ({len(klines_symbols)} with klines, {len(ticker_only_symbols)} ticker-only)")
             
             # Sort by price change
             live_data.sort(key=lambda x: float(x.get('price_change_percent_24h', 0)), reverse=True)
