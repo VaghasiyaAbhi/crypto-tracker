@@ -18,6 +18,52 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# ========================================
+# GLOBAL CACHE FOR ACTIVE TRADING SYMBOLS
+# ========================================
+# This cache prevents delisted symbols from being shown
+# Refreshed every 5 minutes automatically
+_active_symbols_cache = {
+    'symbols': set(),
+    'last_updated': 0,
+    'cache_ttl': 300  # 5 minutes
+}
+
+def get_active_trading_symbols():
+    """
+    Get actively trading symbols from Binance with caching.
+    This permanently filters out delisted/BREAK status symbols.
+    """
+    global _active_symbols_cache
+    current_time = time.time()
+    
+    # Return cached if still valid
+    if (_active_symbols_cache['symbols'] and 
+        current_time - _active_symbols_cache['last_updated'] < _active_symbols_cache['cache_ttl']):
+        return _active_symbols_cache['symbols']
+    
+    try:
+        response = requests.get('https://api.binance.com/api/v3/exchangeInfo', timeout=15)
+        response.raise_for_status()
+        exchange_info = response.json()
+        
+        active_symbols = set()
+        for symbol_info in exchange_info.get('symbols', []):
+            if symbol_info.get('status') == 'TRADING':
+                active_symbols.add(symbol_info['symbol'])
+        
+        _active_symbols_cache['symbols'] = active_symbols
+        _active_symbols_cache['last_updated'] = current_time
+        logger.info(f"🔄 Refreshed active trading symbols cache: {len(active_symbols)} symbols")
+        return active_symbols
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch active symbols: {e}")
+        # Return existing cache if available, even if stale
+        if _active_symbols_cache['symbols']:
+            return _active_symbols_cache['symbols']
+        return set()
+
 class DecimalEncoder(json.JSONEncoder):
     """Custom JSON encoder to handle Decimal objects"""
     def default(self, obj):
@@ -217,18 +263,12 @@ class CryptoConsumer(AsyncWebsocketConsumer):
     def _sync_fetch_live_data(self, quote_currency: str, page_size: int):
         """Synchronous helper to fetch live data from Binance"""
         try:
-            # Step 0: Get active trading symbols from exchangeInfo (filter out delisted/BREAK status)
-            exchange_info_response = requests.get('https://api.binance.com/api/v3/exchangeInfo', timeout=15)
-            exchange_info_response.raise_for_status()
-            exchange_info = exchange_info_response.json()
+            # Step 0: Get active trading symbols from cache (filters out delisted)
+            active_trading_symbols = get_active_trading_symbols()
             
-            # Build set of actively trading symbols
-            active_trading_symbols = set()
-            for symbol_info in exchange_info.get('symbols', []):
-                if symbol_info.get('status') == 'TRADING':
-                    active_trading_symbols.add(symbol_info['symbol'])
-            
-            logger.info(f"📊 WebSocket: Found {len(active_trading_symbols)} actively trading symbols")
+            if not active_trading_symbols:
+                logger.error("❌ No active trading symbols available")
+                return None
             
             # Step 1: Fetch 24hr ticker data
             response = requests.get('https://api.binance.com/api/v3/ticker/24hr', timeout=10)
@@ -241,7 +281,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 symbol = item.get('symbol', '')
                 if not symbol.endswith(quote_currency):
                     continue
-                # Skip delisted/non-trading symbols
+                # Skip delisted/non-trading symbols (PERMANENT FIX)
                 if symbol not in active_trading_symbols:
                     continue
                 quote_volume = float(item.get('quoteVolume', 0))
@@ -249,18 +289,15 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                     continue
                 filtered_data.append(item)
             
-            # Sort by 24h volume (highest volume first) - better for showing major coins
+            # Sort by 24h volume (highest volume first)
             filtered_data.sort(key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
-            # Get ALL symbols for display, but only fetch klines for top 100
-            all_symbols = filtered_data[:min(page_size, 1000)]
-            # Only fetch klines for top 100 symbols (due to Binance API rate limits)
-            klines_symbols = all_symbols[:100]
-            # Remaining symbols get basic ticker data only
-            basic_symbols = all_symbols[100:]
             
-            logger.info(f"📊 Fetching klines for {len(klines_symbols)} symbols, basic data for {len(basic_symbols)} symbols")
+            # Get symbols up to page_size
+            all_symbols = filtered_data[:min(page_size, 500)]
             
-            # Step 2: Fetch klines for top symbols in parallel
+            logger.info(f"📊 Fetching klines for ALL {len(all_symbols)} symbols (no N/A)")
+            
+            # Step 2: Fetch klines for ALL symbols in parallel with rate limit handling
             def fetch_klines_for_symbol(ticker_item):
                 symbol = ticker_item['symbol']
                 current_price = float(ticker_item['lastPrice'])
@@ -268,14 +305,19 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 try:
                     # Fetch 65 candles to properly calculate 60-minute metrics
                     klines_url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1m&limit=65"
-                    klines_response = requests.get(klines_url, timeout=5)
+                    klines_response = requests.get(klines_url, timeout=8)
+                    
+                    if klines_response.status_code == 429:
+                        # Rate limited - wait and retry once
+                        time.sleep(0.5)
+                        klines_response = requests.get(klines_url, timeout=8)
                     
                     if klines_response.status_code != 200:
-                        return self._basic_ticker_data(ticker_item)
+                        return self._basic_ticker_data_with_zeros(ticker_item)
                     
                     klines = klines_response.json()
                     if len(klines) < 2:
-                        return self._basic_ticker_data(ticker_item)
+                        return self._basic_ticker_data_with_zeros(ticker_item)
                     
                     # Build metrics
                     metrics = {
@@ -381,23 +423,20 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                     return metrics
                     
                 except Exception as e:
-                    return self._basic_ticker_data(ticker_item)
+                    return self._basic_ticker_data_with_zeros(ticker_item)
             
-            # Use ThreadPoolExecutor for parallel klines fetching (only top 100)
+            # Use ThreadPoolExecutor for parallel klines fetching for ALL symbols
+            # Use 20 workers to process faster (Binance allows ~1200 requests/minute)
             live_data = []
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                futures = {executor.submit(fetch_klines_for_symbol, item): item for item in klines_symbols}
-                for future in concurrent.futures.as_completed(futures):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+                futures = {executor.submit(fetch_klines_for_symbol, item): item for item in all_symbols}
+                for future in concurrent.futures.as_completed(futures, timeout=30):
                     try:
                         result = future.result()
                         if result:
                             live_data.append(result)
                     except Exception:
                         pass
-            
-            # Add basic data for remaining symbols (no klines)
-            for item in basic_symbols:
-                live_data.append(self._basic_ticker_data(item))
             
             # Sort by price change
             live_data.sort(key=lambda x: float(x.get('price_change_percent_24h', 0)), reverse=True)
@@ -420,22 +459,67 @@ class CryptoConsumer(AsyncWebsocketConsumer):
             'ask_price': ticker_item.get('askPrice'),
         }
 
+    def _basic_ticker_data_with_zeros(self, ticker_item):
+        """
+        Return ticker data with zero values for klines fields instead of N/A.
+        This prevents N/A flickering in the UI.
+        """
+        data = {
+            'symbol': ticker_item['symbol'],
+            'last_price': ticker_item['lastPrice'],
+            'price_change_percent_24h': ticker_item['priceChangePercent'],
+            'high_price_24h': ticker_item['highPrice'],
+            'low_price_24h': ticker_item['lowPrice'],
+            'quote_volume_24h': ticker_item['quoteVolume'],
+            'bid_price': ticker_item.get('bidPrice'),
+            'ask_price': ticker_item.get('askPrice'),
+            'spread': '0',
+        }
+        
+        # Add zero values for all timeframe fields to prevent N/A
+        timeframes = ['m1', 'm2', 'm3', 'm5', 'm10', 'm15', 'm60']
+        for tf in timeframes:
+            data[tf] = '0'
+            data[f'{tf}_r_pct'] = '0'
+            data[f'{tf}_vol'] = '0'
+            data[f'{tf}_vol_pct'] = '0'
+            data[f'{tf}_low'] = ticker_item['lowPrice']
+            data[f'{tf}_high'] = ticker_item['highPrice']
+            data[f'{tf}_range_pct'] = '0'
+            data[f'{tf}_bv'] = '0'
+            data[f'{tf}_sv'] = '0'
+            data[f'{tf}_nv'] = '0'
+        
+        # RSI fields
+        data['rsi_1m'] = '50'
+        data['rsi_3m'] = '50'
+        data['rsi_5m'] = '50'
+        data['rsi_15m'] = '50'
+        
+        return data
+
     @database_sync_to_async
     def _get_snapshot_chunk(self, serializer_class, sort_field: str, offset: int, limit: int, quote_currency: str = 'USDT'):
-        # Filter to pairs with selected quote currency
-        qs = CryptoData.objects.filter(symbol__endswith=quote_currency).order_by(sort_field)[offset:offset + limit]
+        # Filter to pairs with selected quote currency and only active trading symbols
+        active_symbols = get_active_trading_symbols()
+        qs = CryptoData.objects.filter(
+            symbol__endswith=quote_currency,
+            symbol__in=active_symbols
+        ).order_by(sort_field)[offset:offset + limit]
         return serializer_class(qs, many=True).data
 
     @database_sync_to_async
     def _get_snapshot_chunk_all(self, serializer_class, sort_field: str, offset: int, limit: int):
         """Get all currency pairs (USDT, USDC, FDUSD, BNB, BTC) in one query for instant client-side filtering"""
         from django.db.models import Q
-        # Filter to only valid quote currencies
+        # Get active trading symbols to filter out delisted
+        active_symbols = get_active_trading_symbols()
+        # Filter to only valid quote currencies AND active trading symbols
         valid_currencies = ['USDT', 'USDC', 'FDUSD', 'BNB', 'BTC']
         q_filter = Q()
         for currency in valid_currencies:
             q_filter |= Q(symbol__endswith=currency)
-        qs = CryptoData.objects.filter(q_filter).order_by(sort_field)[offset:offset + limit]
+        qs = CryptoData.objects.filter(q_filter, symbol__in=active_symbols).order_by(sort_field)[offset:offset + limit]
         return serializer_class(qs, many=True).data
 
     async def _heartbeat(self):
