@@ -46,7 +46,6 @@ class BinanceWebSocketClient:
         self.ticker_data_buffer = {}  # Buffer ticker data for batch DB updates
         self.kline_data_buffer = {}   # Buffer kline data
         self.update_interval = 10     # Update DB every 10 seconds (slower for external DB)
-        self.db_pool = None           # Async database pool
         
         # Statistics
         self.stats = {
@@ -60,8 +59,12 @@ class BinanceWebSocketClient:
     async def connect(self):
         """Connect to Binance WebSocket streams"""
         try:
-            # Initialize database pool first
-            await self._init_db_pool()
+            # Setup Django for ORM access
+            import django
+            import os
+            os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'project_config.settings')
+            django.setup()
+            logger.info("✅ Django ORM initialized for database access")
             
             # Use simple single-stream URL for ticker data
             url = f"{BINANCE_WS_URL}/!ticker@arr"
@@ -89,54 +92,6 @@ class BinanceWebSocketClient:
             logger.error(f"❌ WebSocket connection failed: {e}")
             self.is_connected = False
             await self._reconnect()
-    
-    async def _init_db_pool(self):
-        """Initialize asyncpg connection pool"""
-        try:
-            import asyncpg
-            from urllib.parse import urlparse, unquote
-            
-            # Get database settings from environment
-            db_host = os.getenv('DB_HOST', 'localhost')
-            db_name = os.getenv('DB_NAME', 'crypto_tracker')
-            db_user = os.getenv('DB_USER', 'postgres')
-            db_password = os.getenv('DB_PASSWORD', 'postgres')
-            db_port = os.getenv('DB_PORT', '5432')
-            
-            # Check for DATABASE_URL first (Heroku style)
-            database_url = os.getenv('DATABASE_URL')
-            
-            if database_url:
-                # Parse DATABASE_URL manually to handle special characters
-                parsed = urlparse(database_url)
-                db_host = parsed.hostname or 'localhost'
-                db_port = str(parsed.port or 5432)
-                db_name = parsed.path.lstrip('/') if parsed.path else 'crypto_tracker'
-                db_user = unquote(parsed.username) if parsed.username else 'postgres'
-                db_password = unquote(parsed.password) if parsed.password else ''
-                
-                logger.info(f"📦 Parsed DATABASE_URL: {db_user}@{db_host}:{db_port}/{db_name}")
-            
-            logger.info(f"📦 Creating asyncpg pool: {db_user}@{db_host}:{db_port}/{db_name}")
-            self.db_pool = await asyncpg.create_pool(
-                host=db_host,
-                database=db_name,
-                user=db_user,
-                password=db_password,
-                port=int(db_port),
-                min_size=1,
-                max_size=3,
-                command_timeout=300,  # Increase timeout to 5 minutes for external DB
-                statement_cache_size=0  # Disable statement caching for dynamic queries
-            )
-            
-            logger.info(f"✅ Database pool created successfully!")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to create database pool: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            raise
     
     async def _listen(self):
         """Listen for incoming WebSocket messages"""
@@ -211,7 +166,7 @@ class BinanceWebSocketClient:
                 logger.error(f"DB update loop error: {e}")
     
     async def _update_database(self):
-        """Update database with buffered ticker data using asyncpg - UNNEST for fast batch upsert"""
+        """Update database with buffered ticker data using Django ORM in a thread"""
         try:
             # Copy and clear buffers immediately
             ticker_snapshot = dict(self.ticker_data_buffer)
@@ -228,26 +183,13 @@ class BinanceWebSocketClient:
             symbols_list = sorted([s for s in ticker_snapshot.keys() if any(s.endswith(q) for q in quote_currencies)])
             logger.info(f"   Found {len(symbols_list)} pairs for supported quote currencies...")
             
-            if not self.db_pool:
-                logger.warning("   No database pool available!")
-                return
-            
             if not symbols_list:
                 return
             
             start_time = time.time()
             
-            # Prepare arrays for UNNEST (sort order preserved)
-            symbols = []
-            last_prices = []
-            changes = []
-            highs = []
-            lows = []
-            volumes = []
-            bids = []
-            asks = []
-            spreads = []
-            
+            # Prepare data for update
+            updates = []
             for symbol in symbols_list[:200]:  # Update 200 pairs per cycle (faster with external DB)
                 data = ticker_snapshot.get(symbol)
                 if not data:
@@ -255,67 +197,74 @@ class BinanceWebSocketClient:
                 
                 try:
                     metrics = self._calculate_metrics(data)
-                    symbols.append(symbol)
-                    last_prices.append(float(metrics['last_price']))
-                    changes.append(float(metrics['price_change_percent_24h']))
-                    highs.append(float(metrics['high_price_24h']))
-                    lows.append(float(metrics['low_price_24h']))
-                    volumes.append(float(metrics['quote_volume_24h']))
-                    bids.append(float(metrics['bid_price']))
-                    asks.append(float(metrics['ask_price']))
-                    spreads.append(float(metrics['spread']))
+                    updates.append(metrics)
                 except Exception as e:
                     logger.error(f"   Failed to prepare {symbol}: {e}")
             
-            if not symbols:
+            if not updates:
                 return
             
-            logger.info(f"   Prepared {len(symbols)} records, using UNNEST batch upsert...")
+            logger.info(f"   Prepared {len(updates)} records, using Django ORM bulk update...")
             
-            # Retry loop for deadlocks
-            for attempt in range(3):
-                try:
-                    async with self.db_pool.acquire() as conn:
-                        result = await conn.execute('''
-                            INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
-                                high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
-                            SELECT * FROM UNNEST($1::varchar[], $2::decimal[], $3::decimal[], 
-                                $4::decimal[], $5::decimal[], $6::decimal[], $7::decimal[], $8::decimal[], $9::decimal[])
-                            ON CONFLICT (symbol) DO UPDATE SET
-                                last_price = EXCLUDED.last_price,
-                                price_change_percent_24h = EXCLUDED.price_change_percent_24h,
-                                high_price_24h = EXCLUDED.high_price_24h,
-                                low_price_24h = EXCLUDED.low_price_24h,
-                                quote_volume_24h = EXCLUDED.quote_volume_24h,
-                                bid_price = EXCLUDED.bid_price,
-                                ask_price = EXCLUDED.ask_price,
-                                spread = EXCLUDED.spread
-                        ''', symbols, last_prices, changes, highs, lows, volumes, bids, asks, spreads)
+            # Use asyncio.to_thread for sync ORM operation
+            try:
+                import asyncio
+                result = await asyncio.to_thread(self._sync_bulk_update, updates)
+                
+                elapsed = time.time() - start_time
+                self.stats['db_updates'] += 1
+                self.stats['last_update'] = time.time()
+                
+                logger.info(f"✅ Upserted {len(updates)} symbols in {elapsed:.2f}s")
                         
-                        elapsed = time.time() - start_time
-                        self.stats['db_updates'] += 1
-                        self.stats['last_update'] = time.time()
-                        
-                        logger.info(f"✅ Upserted {len(symbols)} symbols in {elapsed:.2f}s ({result})")
-                        break  # Success, exit retry loop
-                        
-                except Exception as e:
-                    error_msg = str(e).lower()
-                    if 'deadlock' in error_msg and attempt < 2:
-                        logger.warning(f"   Deadlock detected, retrying ({attempt + 1}/3)...")
-                        await asyncio.sleep(0.5 * (attempt + 1))  # Backoff
-                        continue
-                    else:
-                        logger.error(f"   UNNEST upsert failed: {e}")
-                        import traceback
-                        logger.error(traceback.format_exc())
-                        break
+            except Exception as e:
+                logger.error(f"   Django ORM bulk update failed: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
             
         except Exception as e:
             import traceback
             logger.error(f"Database update failed: {e}")
             logger.error(traceback.format_exc())
             self.stats['errors'] += 1
+    
+    def _sync_bulk_update(self, updates: list):
+        """Synchronous bulk update using Django ORM"""
+        from core.models import CryptoData
+        from django.db import connection
+        
+        # Use raw SQL for faster upsert
+        with connection.cursor() as cursor:
+            for item in updates:
+                try:
+                    cursor.execute('''
+                        INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
+                            high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (symbol) DO UPDATE SET
+                            last_price = EXCLUDED.last_price,
+                            price_change_percent_24h = EXCLUDED.price_change_percent_24h,
+                            high_price_24h = EXCLUDED.high_price_24h,
+                            low_price_24h = EXCLUDED.low_price_24h,
+                            quote_volume_24h = EXCLUDED.quote_volume_24h,
+                            bid_price = EXCLUDED.bid_price,
+                            ask_price = EXCLUDED.ask_price,
+                            spread = EXCLUDED.spread
+                    ''', [
+                        item['symbol'],
+                        float(item['last_price']),
+                        float(item['price_change_percent_24h']),
+                        float(item['high_price_24h']),
+                        float(item['low_price_24h']),
+                        float(item['quote_volume_24h']),
+                        float(item['bid_price']),
+                        float(item['ask_price']),
+                        float(item['spread'])
+                    ])
+                except Exception as e:
+                    logger.error(f"Failed to upsert {item.get('symbol')}: {e}")
+        
+        return len(updates)
     
     def _calculate_metrics(self, ticker_data: dict) -> dict:
         """Calculate all metrics from ticker data"""
@@ -351,8 +300,6 @@ class BinanceWebSocketClient:
     async def disconnect(self):
         """Disconnect from WebSocket"""
         self.is_connected = False
-        if self.db_pool:
-            await self.db_pool.close()
         if self.ws:
             await self.ws.close()
             logger.info("🔌 Disconnected from Binance WebSocket")
