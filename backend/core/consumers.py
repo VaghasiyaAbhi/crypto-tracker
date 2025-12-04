@@ -168,21 +168,21 @@ class CryptoConsumer(AsyncWebsocketConsumer):
 
     async def _auto_refresh_loop(self):
         """
-        Automatically send fresh data to premium users every 5 seconds.
-        Data comes from the database which is updated by Binance WebSocket.
+        Automatically send fresh data to premium users every 10 seconds.
+        Uses Binance API to get real klines data (1m%, 5m%, RSI, etc).
         """
         try:
-            # Wait 2 seconds before starting (let initial connection settle)
-            await asyncio.sleep(2)
+            # Wait 5 seconds before starting (let initial data load first)
+            await asyncio.sleep(5)
             
             while True:
-                await asyncio.sleep(5)  # Refresh every 5 seconds
+                await asyncio.sleep(10)  # Refresh every 10 seconds (API has rate limits)
                 try:
                     # Get current currency (updated by request_snapshot messages)
                     currency = getattr(self, 'current_currency', 'USDT')
                     
-                    # Fetch fresh data from DB and send to client
-                    live_data = await self._fetch_live_data_from_db(currency, 500)
+                    # Fetch fresh data from Binance API with klines
+                    live_data = await self._fetch_live_binance_data(currency, 150)
                     if live_data:
                         await self.send(text_data=json.dumps({
                             'type': 'live_update',
@@ -192,6 +192,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                             'auto_refresh': True,
                             'data': live_data,
                         }, cls=DecimalEncoder))
+                        logger.info(f"🔄 Auto-refresh: Sent {len(live_data)} items with klines for {currency}")
                 except Exception as e:
                     logger.error(f"Auto-refresh error: {e}")
         except asyncio.CancelledError:
@@ -310,12 +311,13 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                 logger.info(f"⏭️ Skipping live_update for {user_plan} user (fetch_all={fetch_all_currencies})")
 
     async def _send_live_update(self, quote_currency: str, page_size: int):
-        """Fetch live data from DATABASE (updated by WebSocket) and send as update (background task)"""
+        """Fetch live data from Binance API with klines and send as update (background task)"""
         try:
-            logger.info(f"📡 Fetching fresh DB data for {quote_currency} (page_size={page_size})")
-            live_data = await self._fetch_live_data_from_db(quote_currency, page_size)
+            logger.info(f"📡 Fetching live Binance data for {quote_currency} (page_size={page_size})")
+            # Use Binance API to get real klines data
+            live_data = await self._fetch_live_binance_data(quote_currency, page_size)
             if live_data:
-                logger.info(f"✅ Sending live_update with {len(live_data)} items from DB")
+                logger.info(f"✅ Sending live_update with {len(live_data)} items (with klines)")
                 await self.send(text_data=json.dumps({
                     'type': 'live_update',
                     'total_count': len(live_data),
@@ -324,7 +326,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                     'data': live_data,
                 }, cls=DecimalEncoder))
             else:
-                logger.warning(f"⚠️ No live data received from DB")
+                logger.warning(f"⚠️ No live data received from Binance API")
         except Exception as e:
             logger.error(f"Failed to send live update: {e}")
 
