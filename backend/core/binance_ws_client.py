@@ -94,6 +94,7 @@ class BinanceWebSocketClient:
         """Initialize asyncpg connection pool"""
         try:
             import asyncpg
+            from urllib.parse import urlparse, unquote
             
             # Get database settings from environment
             db_host = os.getenv('DB_HOST', 'localhost')
@@ -106,25 +107,27 @@ class BinanceWebSocketClient:
             database_url = os.getenv('DATABASE_URL')
             
             if database_url:
-                logger.info(f"📦 Creating asyncpg pool from DATABASE_URL...")
-                self.db_pool = await asyncpg.create_pool(
-                    database_url,
-                    min_size=1,
-                    max_size=5,
-                    command_timeout=30
-                )
-            else:
-                logger.info(f"📦 Creating asyncpg pool: {db_user}@{db_host}:{db_port}/{db_name}")
-                self.db_pool = await asyncpg.create_pool(
-                    host=db_host,
-                    database=db_name,
-                    user=db_user,
-                    password=db_password,
-                    port=int(db_port),
-                    min_size=1,
-                    max_size=5,
-                    command_timeout=30
-                )
+                # Parse DATABASE_URL manually to handle special characters
+                parsed = urlparse(database_url)
+                db_host = parsed.hostname or 'localhost'
+                db_port = str(parsed.port or 5432)
+                db_name = parsed.path.lstrip('/') if parsed.path else 'crypto_tracker'
+                db_user = unquote(parsed.username) if parsed.username else 'postgres'
+                db_password = unquote(parsed.password) if parsed.password else ''
+                
+                logger.info(f"📦 Parsed DATABASE_URL: {db_user}@{db_host}:{db_port}/{db_name}")
+            
+            logger.info(f"📦 Creating asyncpg pool: {db_user}@{db_host}:{db_port}/{db_name}")
+            self.db_pool = await asyncpg.create_pool(
+                host=db_host,
+                database=db_name,
+                user=db_user,
+                password=db_password,
+                port=int(db_port),
+                min_size=1,
+                max_size=5,
+                command_timeout=30
+            )
             
             logger.info(f"✅ Database pool created successfully!")
             
