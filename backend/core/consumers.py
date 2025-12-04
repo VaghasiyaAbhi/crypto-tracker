@@ -487,15 +487,16 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                     return self._basic_ticker_data_with_zeros(ticker_item)
             
             # Fetch klines for ALL symbols with high parallelism
-            # Limit to 300 symbols max to ensure completion within timeout
-            symbols_to_fetch = all_symbols[:300]
-            logger.info(f"📊 Fetching klines for {len(symbols_to_fetch)} symbols (capped at 300) with 50 workers")
+            # Limit to 150 symbols max to ensure completion within 5-6 seconds
+            # This allows proper 10-second refresh cycles without overlap
+            symbols_to_fetch = all_symbols[:150]
+            logger.info(f"📊 Fetching klines for {len(symbols_to_fetch)} symbols (capped at 150) with 50 workers")
             
             live_data = []
             try:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
                     futures = {executor.submit(fetch_klines_for_symbol, item): item for item in symbols_to_fetch}
-                    for future in concurrent.futures.as_completed(futures, timeout=20):
+                    for future in concurrent.futures.as_completed(futures, timeout=10):
                         try:
                             result = future.result()
                             if result:
@@ -504,7 +505,7 @@ class CryptoConsumer(AsyncWebsocketConsumer):
                             pass
             except concurrent.futures.TimeoutError:
                 # Timeout occurred, but we still have partial data - use it
-                logger.warning(f"⚠️ Timeout after 20s, using {len(live_data)} symbols that completed")
+                logger.warning(f"⚠️ Timeout after 10s, using {len(live_data)} symbols that completed")
             
             logger.info(f"✅ Prepared {len(live_data)} symbols with klines data")
             
