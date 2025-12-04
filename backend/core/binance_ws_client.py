@@ -210,7 +210,7 @@ class BinanceWebSocketClient:
                 logger.error(f"DB update loop error: {e}")
     
     async def _update_database(self):
-        """Update database with buffered ticker data using asyncpg"""
+        """Update database with buffered ticker data using asyncpg - BATCH optimized"""
         try:
             # Copy and clear buffers immediately
             ticker_snapshot = dict(self.ticker_data_buffer)
@@ -221,7 +221,7 @@ class BinanceWebSocketClient:
             
             logger.info(f"📝 Starting DB update for {len(ticker_snapshot)} symbols...")
             
-            # Filter to USDT pairs
+            # Filter to USDT pairs only
             symbols_list = [s for s in ticker_snapshot.keys() if s.endswith('USDT')]
             logger.info(f"   Filtering to {len(symbols_list)} USDT pairs...")
             
@@ -229,72 +229,68 @@ class BinanceWebSocketClient:
                 logger.warning("   No database pool available!")
                 return
             
+            if not symbols_list:
+                return
+            
             start_time = time.time()
-            updated = 0
-            inserted = 0
             
-            logger.info("   Acquiring database connection...")
-            
-            # Use asyncpg for async database operations
-            async with self.db_pool.acquire() as conn:
-                logger.info("   Connection acquired! Starting updates...")
+            # Prepare batch data
+            batch_data = []
+            for symbol in symbols_list[:500]:  # Limit to 500
+                data = ticker_snapshot.get(symbol)
+                if not data:
+                    continue
                 
-                # Process in smaller batches to see progress
-                batch_size = 50
-                for i in range(0, min(len(symbols_list), 500), batch_size):
-                    batch = symbols_list[i:i+batch_size]
-                    batch_start = time.time()
+                try:
+                    metrics = self._calculate_metrics(data)
+                    batch_data.append((
+                        symbol,
+                        float(metrics['last_price']),
+                        float(metrics['price_change_percent_24h']),
+                        float(metrics['high_price_24h']),
+                        float(metrics['low_price_24h']),
+                        float(metrics['quote_volume_24h']),
+                        float(metrics['bid_price']),
+                        float(metrics['ask_price']),
+                        float(metrics['spread'])
+                    ))
+                except Exception as e:
+                    logger.error(f"   Failed to prepare {symbol}: {e}")
+            
+            if not batch_data:
+                return
+            
+            logger.info(f"   Prepared {len(batch_data)} records for batch upsert...")
+            
+            # Use executemany for faster batch operations
+            async with self.db_pool.acquire() as conn:
+                try:
+                    # Use a single executemany for all records
+                    await conn.executemany('''
+                        INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
+                            high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        ON CONFLICT (symbol) DO UPDATE SET
+                            last_price = EXCLUDED.last_price,
+                            price_change_percent_24h = EXCLUDED.price_change_percent_24h,
+                            high_price_24h = EXCLUDED.high_price_24h,
+                            low_price_24h = EXCLUDED.low_price_24h,
+                            quote_volume_24h = EXCLUDED.quote_volume_24h,
+                            bid_price = EXCLUDED.bid_price,
+                            ask_price = EXCLUDED.ask_price,
+                            spread = EXCLUDED.spread
+                    ''', batch_data)
                     
-                    for symbol in batch:
-                        try:
-                            data = ticker_snapshot.get(symbol)
-                            if not data:
-                                continue
-                            
-                            metrics = self._calculate_metrics(data)
-                            
-                            # Use PostgreSQL UPSERT
-                            result = await conn.execute('''
-                                INSERT INTO core_cryptodata (symbol, last_price, price_change_percent_24h, 
-                                    high_price_24h, low_price_24h, quote_volume_24h, bid_price, ask_price, spread)
-                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                                ON CONFLICT (symbol) DO UPDATE SET
-                                    last_price = EXCLUDED.last_price,
-                                    price_change_percent_24h = EXCLUDED.price_change_percent_24h,
-                                    high_price_24h = EXCLUDED.high_price_24h,
-                                    low_price_24h = EXCLUDED.low_price_24h,
-                                    quote_volume_24h = EXCLUDED.quote_volume_24h,
-                                    bid_price = EXCLUDED.bid_price,
-                                    ask_price = EXCLUDED.ask_price,
-                                    spread = EXCLUDED.spread
-                            ''', 
-                                symbol,
-                                float(metrics['last_price']),
-                                float(metrics['price_change_percent_24h']),
-                                float(metrics['high_price_24h']),
-                                float(metrics['low_price_24h']),
-                                float(metrics['quote_volume_24h']),
-                                float(metrics['bid_price']),
-                                float(metrics['ask_price']),
-                                float(metrics['spread'])
-                            )
-                            
-                            if 'INSERT' in result:
-                                inserted += 1
-                            else:
-                                updated += 1
-                                
-                        except Exception as e:
-                            logger.error(f"   Failed to update {symbol}: {e}")
-                    
-                    batch_time = time.time() - batch_start
-                    logger.info(f"   Batch {i//batch_size + 1}: {len(batch)} symbols in {batch_time:.2f}s")
+                except Exception as e:
+                    logger.error(f"   Batch insert failed: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
             
             elapsed = time.time() - start_time
             self.stats['db_updates'] += 1
             self.stats['last_update'] = time.time()
             
-            logger.info(f"✅ Updated {updated}, inserted {inserted} symbols in {elapsed:.2f}s")
+            logger.info(f"✅ Batch upserted {len(batch_data)} symbols in {elapsed:.2f}s")
             
         except Exception as e:
             import traceback
