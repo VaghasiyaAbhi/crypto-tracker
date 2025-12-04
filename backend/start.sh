@@ -32,6 +32,10 @@ if [ $# -gt 0 ]; then
     echo "Running command: $@"
     exec "$@"
 else
+    # Start Binance WebSocket client in background for real-time data updates
+    echo "Starting Binance WebSocket client in background..."
+    python manage.py start_binance_ws &
+    
     if [ "${DEBUG:-0}" = "1" ]; then
         echo "Starting development server with ASGI support..."
         exec daphne -b 0.0.0.0 -p 8000 project_config.asgi:application
