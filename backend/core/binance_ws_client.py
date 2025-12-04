@@ -246,25 +246,28 @@ class BinanceWebSocketClient:
             # Use sync_to_async for Django ORM with bulk update
             @sync_to_async
             def batch_update():
-                # Prepare all records first
+                symbols_list = list(ticker_snapshot.keys())
+                
+                # Get existing records with their IDs
+                existing_records = {
+                    record.symbol: record 
+                    for record in CryptoData.objects.filter(symbol__in=symbols_list)
+                }
+                
                 records_to_update = []
                 records_to_create = []
-                
-                # Get existing symbols
-                existing_symbols = set(
-                    CryptoData.objects.filter(
-                        symbol__in=list(ticker_snapshot.keys())
-                    ).values_list('symbol', flat=True)
-                )
                 
                 for symbol, data in ticker_snapshot.items():
                     try:
                         klines = kline_snapshot.get(symbol, [])
                         metrics = self._calculate_metrics(data, klines)
                         
-                        if symbol in existing_symbols:
-                            # Update existing
-                            record = CryptoData(symbol=symbol, **{k: v for k, v in metrics.items() if k != 'symbol'})
+                        if symbol in existing_records:
+                            # Update existing record (keep the same object with its pk)
+                            record = existing_records[symbol]
+                            for key, value in metrics.items():
+                                if key != 'symbol':
+                                    setattr(record, key, value)
                             records_to_update.append(record)
                         else:
                             # Create new
