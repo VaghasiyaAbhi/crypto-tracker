@@ -140,17 +140,21 @@ class BinanceWebSocketClient:
             self.is_connected = False
             await self._reconnect()
     
-    async def _handle_message(self, data: dict):
+    async def _handle_message(self, data):
         """Handle incoming WebSocket message"""
-        stream = data.get('stream', '')
-        payload = data.get('data', data)
-        
-        if stream == '!ticker@arr' or isinstance(payload, list):
-            # All market tickers
-            await self._handle_ticker_update(payload)
-        elif '@kline_' in stream:
-            # Kline/candlestick update
-            await self._handle_kline_update(payload)
+        # Single stream endpoint returns list directly
+        # Multi-stream endpoint returns {stream: ..., data: ...}
+        if isinstance(data, list):
+            # Direct ticker array from single stream endpoint
+            await self._handle_ticker_update(data)
+        elif isinstance(data, dict):
+            stream = data.get('stream', '')
+            payload = data.get('data', data)
+            
+            if stream == '!ticker@arr' or isinstance(payload, list):
+                await self._handle_ticker_update(payload)
+            elif '@kline_' in stream:
+                await self._handle_kline_update(payload)
     
     async def _handle_ticker_update(self, tickers: list):
         """Handle ticker updates - buffer for batch DB update"""
