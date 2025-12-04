@@ -994,7 +994,17 @@ export default function DashboardPage() {
   }, [detectAndAnimateChanges]); // Only restart if detectAndAnimateChanges changes (visibleColumns)
 
   // Currency change effect - request new data from WebSocket
+  // Skip initial render (WebSocket connects on mount, not here)
+  const isInitialCurrencyMount = useRef(true);
+  
   useEffect(() => {
+    // Skip the initial mount - WebSocket connection handles the first data request
+    if (isInitialCurrencyMount.current) {
+      isInitialCurrencyMount.current = false;
+      console.log('🔄 Currency effect: Skipping initial mount (WebSocket will handle first request)');
+      return;
+    }
+    
     console.log('🔄 Currency change effect triggered - NEW VALUE:', baseCurrency);
     console.log('🔄 Updating baseCurrencyRef.current from', baseCurrencyRef.current, 'to', baseCurrency);
     
@@ -1045,9 +1055,44 @@ export default function DashboardPage() {
       // Clean up timeout on next currency change
       return () => clearTimeout(currencyChangeTimeout);
     } else {
-      console.warn('⚠️ WebSocket not connected, cannot request currency data');
-      setLoading(false);
-      setError('WebSocket disconnected. Please refresh the page.');
+      // WebSocket not connected - wait and retry
+      console.warn('⚠️ WebSocket not connected yet, waiting for connection...');
+      
+      // Wait for WebSocket to connect, then request data
+      const waitForConnection = setInterval(() => {
+        if (socketRef.current?.readyState === WebSocket.OPEN) {
+          clearInterval(waitForConnection);
+          console.log('✅ WebSocket connected! Requesting data for', baseCurrency);
+          
+          // Clear old data
+          setCryptoData([]);
+          setAllCryptoData([]);
+          setError(null);
+          setLoading(true);
+          
+          socketRef.current.send(JSON.stringify({
+            type: 'request_snapshot',
+            sort_by: 'profit',
+            sort_order: 'desc',
+            page_size: 1000,
+            quote_currency: baseCurrency
+          }));
+        }
+      }, 500); // Check every 500ms
+      
+      // Stop waiting after 10 seconds
+      const stopWaiting = setTimeout(() => {
+        clearInterval(waitForConnection);
+        if (socketRef.current?.readyState !== WebSocket.OPEN) {
+          setLoading(false);
+          setError('Unable to connect. Please refresh the page.');
+        }
+      }, 10000);
+      
+      return () => {
+        clearInterval(waitForConnection);
+        clearTimeout(stopWaiting);
+      };
     }
   }, [baseCurrency]);
 
