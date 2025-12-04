@@ -64,20 +64,12 @@ class BinanceWebSocketClient:
     async def connect(self):
         """Connect to Binance WebSocket streams"""
         try:
-            # Build stream URL with multiple streams
-            streams = [
-                "!ticker@arr",  # All market tickers - real-time prices
-            ]
+            # Use simple single-stream URL for ticker data
+            # This is the most reliable and provides ALL symbols every 1 second
+            url = f"{BINANCE_WS_URL}/!ticker@arr"
             
-            # Add kline streams for top 100 symbols (for RSI, timeframe data)
-            top_symbols = await self._get_top_symbols(100)
-            for symbol in top_symbols:
-                streams.append(f"{symbol.lower()}@kline_1m")
-            
-            stream_param = "/".join(streams)
-            url = f"{BINANCE_STREAM_URL}?streams={stream_param}"
-            
-            logger.info(f"🔌 Connecting to Binance WebSocket with {len(streams)} streams...")
+            logger.info(f"🔌 Connecting to Binance WebSocket (ticker stream)...")
+            logger.info(f"   URL: {url}")
             
             self.ws = await websockets.connect(
                 url,
