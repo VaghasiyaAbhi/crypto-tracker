@@ -206,16 +206,18 @@ class BinanceWebSocketClient:
             
             logger.info(f"   Prepared {len(updates)} records, using Django ORM bulk update...")
             
-            # Use asyncio.to_thread for sync ORM operation
+            # Use ThreadPoolExecutor for sync ORM operation
             try:
-                import asyncio
-                result = await asyncio.to_thread(self._sync_bulk_update, updates)
+                import concurrent.futures
+                loop = asyncio.get_event_loop()
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    result = await loop.run_in_executor(executor, self._sync_bulk_update, updates)
                 
                 elapsed = time.time() - start_time
                 self.stats['db_updates'] += 1
                 self.stats['last_update'] = time.time()
                 
-                logger.info(f"✅ Upserted {len(updates)} symbols in {elapsed:.2f}s")
+                logger.info(f"✅ Upserted {result} symbols in {elapsed:.2f}s")
                         
             except Exception as e:
                 logger.error(f"   Django ORM bulk update failed: {e}")
