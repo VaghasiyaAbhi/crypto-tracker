@@ -59,7 +59,7 @@ services:
       resources:
         limits:
           cpus: '0.6'
-          memory: 640M
+          memory: 1024M
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "manage.py", "check"]
