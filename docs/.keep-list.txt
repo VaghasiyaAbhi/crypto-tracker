@@ -1,4 +1,0 @@
-# Keep only these essential docs (delete the rest):
-SETUP_GITHUB_WEBHOOK.md
-TOP_100_ALERT_FEATURE.md
-README.md
